@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/fedtop/unity-cli/internal/client"
+	"github.com/youngwoocho02/unity-cli/internal/client"
 )
 
 var (
@@ -77,6 +77,10 @@ func Execute() error {
 		resp, err = diagCmd(subArgs, send)
 	case "profiler":
 		resp, err = profilerCmd(subArgs, send)
+	case "menu":
+		resp, err = menuCmd(subArgs, send)
+	case "reserialize":
+		resp, err = reserializeCmd(subArgs, send)
 	default:
 		// Try as direct custom tool call
 		resp, err = send(category, map[string]interface{}{})
@@ -159,48 +163,64 @@ func extractFlags(args []string) []string {
 func printHelp() {
 	fmt.Print(`unity-cli v0.1.0 — Control Unity Editor from the command line
 
-Usage: unity-cli <command> [options]
+Usage: unity-cli <command> [subcommand] [options]
 
-Commands:
-  editor play [--wait]                        Enter play mode
-  editor stop                                 Exit play mode
-  editor pause                                Toggle pause
-  editor refresh [--compile]                  Refresh assets / request compile
+Editor Control:
+  editor play [--wait]          Enter play mode (--wait blocks until fully entered)
+  editor stop                   Exit play mode
+  editor pause                  Toggle pause/resume (play mode only)
+  editor refresh                Refresh asset database
+  editor refresh --compile      Request script compilation and wait
 
-  console [--lines N] [--filter <type>]       Read console logs
+Console:
+  console                       Read error & warning logs (default)
+  console --lines 20            Limit to N entries
+  console --filter all          Filter: error, warn, log, all
 
-  exec "<code>" [--usings <list>]             Execute C# code in Unity
+Execute C#:
+  exec "<code>"                 Run C# code in Unity (single expression auto-returns)
+  exec "<code>" --usings x,y    Add extra using directives
 
-  query entities --world <w> --component <c>  Query ECS entities
-  query inspect --world <w> --index <N>       Inspect entity details
-  query singleton --world <w> --component <c> Query singleton component
-  query component-values --world <w> --component <c> --fields <list>
-  query systems --world <w> [--filter <name>]
+  Examples:
+    exec "Time.time"
+    exec "GameObject.FindObjectsOfType<Camera>().Length"
+    exec "var go = new GameObject(\"Test\"); return go.name;"
 
-  game connect                                Connect to local server
-  game load --index <N>                       Load mini-game
-  game phase <phase>                          Set game phase
-  game overview                               Game state overview
-  game spawn-bots [count]                     Spawn bots
-  game despawn-bots                           Despawn all bots
-  game thin-clients-connect [count]           Connect thin clients
-  game thin-clients-disconnect                Disconnect thin clients
+Menu:
+  menu "<path>"                 Execute Unity menu item by path
 
-  tool list                                   List available custom tools
-  tool call <name> [--params '{"key":"val"}'] Call a custom tool
-  tool help <name>                            Show tool help
+  Examples:
+    menu "File/Save Project"
+    menu "Assets/Refresh"
 
-  diag hierarchy --world <w> --index <N>      Entity hierarchy
-  diag diff --ghost-id <N>                    Server/client component diff
-  diag players [--world <w>]                  Player status summary
-  diag vehicle --world <w> --index <N>        Vehicle inspection
+Reserialize:
+  reserialize <path> [paths...] Force YAML reserialize after text edits
 
-  profiler hierarchy [--depth N]              Profiler hierarchy data
+  Examples:
+    reserialize Assets/Scenes/Main.unity
+    reserialize Assets/Prefabs/A.prefab Assets/Prefabs/B.prefab
+
+Profiler:
+  profiler hierarchy             Read profiler data (last frame)
+  profiler hierarchy --depth 3   Limit sample depth
+
+Custom Tools:
+  tool list                     List all registered tools (built-in + custom)
+  tool call <name>              Call a tool with no parameters
+  tool call <name> --params '{"key":"val"}'
+                                Call a tool with JSON parameters
+  tool help <name>              Show tool description
 
 Global Options:
-  --port <N>          Override Unity instance port
+  --port <N>          Connect to specific Unity port (skip auto-discovery)
   --project <path>    Select Unity instance by project path
-  --json              Output raw JSON
-  --timeout <ms>      Request timeout (default: 120000)
+  --json              Output full JSON response (default: data only)
+  --timeout <ms>      Request timeout in ms (default: 120000)
+
+Notes:
+  - Unity must be open with the Connector package installed
+  - Multiple Unity instances: use --port or --project to select
+  - Custom tools: any [UnityCliTool] class is auto-discovered
+  - Run 'tool list' to see all available tools
 `)
 }
