@@ -13,11 +13,23 @@ func consoleCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 
 	if v, ok := flags["lines"]; ok {
 		if n, err := strconv.Atoi(v); err == nil {
-			params["maxLines"] = n
+			params["count"] = n
 		}
 	}
 	if v, ok := flags["filter"]; ok {
-		params["filter"] = v
+		switch v {
+		case "all":
+			params["types"] = []string{"error", "warning", "log"}
+		case "error":
+			params["types"] = []string{"error"}
+		case "warn", "warning":
+			params["types"] = []string{"warning"}
+		case "log":
+			params["types"] = []string{"log"}
+		default:
+			params["types"] = []string{"error", "warning", "log"}
+			params["filterText"] = v
+		}
 	}
 
 	return send("read_console", params)
