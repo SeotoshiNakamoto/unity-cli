@@ -145,8 +145,6 @@ namespace UnityCliConnector
                     var command = json["command"]?.ToString();
                     var parameters = json["params"] as JObject;
 
-                    Debug.Log($"[UnityCliConnector] ← {command} (tools: {ToolDiscovery.Tools.Count})");
-
                     if (string.IsNullOrEmpty(command))
                     {
                         result = new ErrorResponse("Missing 'command' field");
