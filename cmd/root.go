@@ -71,6 +71,8 @@ func Execute() error {
 		statusErr := statusCmd(inst)
 		printUpdateNotice()
 		return statusErr
+	case "prime":
+		return primeCmd(flagProject, flagPort)
 	}
 
 	inst, err := client.DiscoverInstance(flagProject, flagPort)
@@ -99,6 +101,10 @@ func Execute() error {
 		resp, err = testCmd(subArgs, testSend, inst.Port)
 	case "exec":
 		subArgs = readStdinIfPiped(subArgs)
+		subArgs, err = expandFileFlag(subArgs)
+		if err != nil {
+			return err
+		}
 		var params map[string]interface{}
 		params, err = buildParams(subArgs, nil)
 		if err == nil {
@@ -253,6 +259,23 @@ func readStdinIfPiped(args []string) []string {
 	return append([]string{code}, args...)
 }
 
+// expandFileFlag replaces --file <path> with the file contents as the first positional arg.
+func expandFileFlag(args []string) ([]string, error) {
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--file" && i+1 < len(args) {
+			data, err := os.ReadFile(args[i+1])
+			if err != nil {
+				return nil, fmt.Errorf("failed to read file %s: %w", args[i+1], err)
+			}
+			code := strings.TrimRight(string(data), "\n\r")
+			rest := append([]string{code}, args[:i]...)
+			rest = append(rest, args[i+2:]...)
+			return rest, nil
+		}
+	}
+	return args, nil
+}
+
 // splitArgs separates global flags (--port, --project, --timeout) from subcommand args.
 // Global flags must be parsed by flag.CommandLine before the subcommand runs.
 func splitArgs(args []string) (flags, commands []string) {
@@ -291,12 +314,14 @@ Console:
 
 Execute C#:
   exec "<code>"                 Run C# code in Unity (return required for output)
+  exec --file <path>            Run C# code from a file (no escaping needed)
   echo '<code>' | exec          Pipe code via stdin (avoids shell escaping)
   exec "<code>" --usings x,y    Add extra using directives
 
   Examples:
     exec "Time.time"
     exec "GameObject.FindObjectsOfType<Camera>().Length"
+    exec --file /tmp/script.cs
     exec "var go = new GameObject(\"Test\"); return go.name;"
 
 Menu:
@@ -413,6 +438,7 @@ UnityEditor, and all loaded assemblies.
 Use 'return' to get output. Add --usings for types outside default namespaces.
 
 Options:
+  --file <path>        Read C# code from a file (no escaping needed)
   --usings <ns1,ns2>   Add extra using directives
   --csc <path>         Path to csc compiler (csc.dll or csc.exe). Auto-detected if omitted.
 
@@ -424,15 +450,13 @@ Default usings: System, System.Collections.Generic, System.IO, System.Linq,
 Examples:
   unity-cli exec "return 1+1;"
   unity-cli exec "return Application.dataPath;"
+  unity-cli exec --file script.cs
+  unity-cli exec --file script.cs --usings Unity.Entities
   echo 'return EditorSceneManager.GetActiveScene().name;' | unity-cli exec
-  echo 'Debug.Log("hello"); return null;' | unity-cli exec
-  unity-cli exec "return World.All.Count;" --usings Unity.Entities
-
-Stdin:
-  Pipe code via stdin to avoid shell escaping issues.
-  echo '<code>' | unity-cli exec [--usings ns1,ns2]
 
 Notes:
+  - --file is recommended for complex code (avoids shell escaping)
+  - Pipe code via stdin: echo '<code>' | unity-cli exec [--usings ns1,ns2]
   - Use 'return' for output, 'return null;' for void operations
 `)
 	case "menu":
