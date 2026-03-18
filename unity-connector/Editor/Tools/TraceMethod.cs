@@ -33,6 +33,9 @@ namespace UnityCliConnector.Tools
 
             [ToolParameter("Log stack traces. Default false (expensive).")]
             public bool LogStack { get; set; }
+
+            [ToolParameter("Filter by instance name (substring match). Only trace matching objects.")]
+            public string InstanceFilter { get; set; }
         }
 
         public static object HandleCommand(JObject parameters)
@@ -74,7 +77,9 @@ namespace UnityCliConnector.Tools
             if (!string.IsNullOrEmpty(harmonyPath))
                 HarmonyTracer.SetHarmonyPath(harmonyPath);
 
-            var (hookId, error) = HarmonyTracer.Hook(typeName, methodName, assembly, logParams, logReturn, logStack);
+            var instanceFilter = p.Get("instanceFilter") ?? p.Get("instance_filter") ?? p.Get("instance");
+
+            var (hookId, error) = HarmonyTracer.Hook(typeName, methodName, assembly, logParams, logReturn, logStack, instanceFilter);
             if (error != null)
                 return new ErrorResponse(error);
 

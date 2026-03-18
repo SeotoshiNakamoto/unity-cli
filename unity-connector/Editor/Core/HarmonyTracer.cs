@@ -24,6 +24,7 @@ namespace UnityCliConnector
             public bool LogParams;
             public bool LogReturn;
             public bool LogStack;
+            public string InstanceFilter;
             public int CallCount;
             public DateTime HookedAt;
         }
@@ -146,7 +147,7 @@ namespace UnityCliConnector
         }
 
         public static (string hookId, string error) Hook(string typeName, string methodName, string assemblyHint,
-            bool logParams, bool logReturn, bool logStack)
+            bool logParams, bool logReturn, bool logStack, string instanceFilter = null)
         {
             var loadError = EnsureHarmonyLoaded();
             if (loadError != null) return (null, loadError);
@@ -212,6 +213,7 @@ namespace UnityCliConnector
                 LogParams = logParams,
                 LogReturn = logReturn,
                 LogStack = logStack,
+                InstanceFilter = instanceFilter,
                 CallCount = 0,
                 HookedAt = DateTime.UtcNow,
             };
@@ -257,6 +259,7 @@ namespace UnityCliConnector
                 logParams = h.LogParams,
                 logReturn = h.LogReturn,
                 logStack = h.LogStack,
+                instanceFilter = h.InstanceFilter,
                 hookedAt = h.HookedAt.ToString("o"),
             }).ToList();
         }
@@ -319,6 +322,13 @@ namespace UnityCliConnector
         {
             if (!s_MethodToHook.TryGetValue(__originalMethod, out var hookId)) return;
             if (!s_Hooks.TryGetValue(hookId, out var info)) return;
+
+            // Instance filter: skip if filter set and instance doesn't match
+            if (info.InstanceFilter != null)
+            {
+                var instStr = __instance != null ? SafeToString(__instance) : "";
+                if (!instStr.Contains(info.InstanceFilter)) return;
+            }
 
             info.CallCount++;
             s_Hooks[hookId] = info;

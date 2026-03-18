@@ -33,6 +33,7 @@ func traceCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 		if _, ok := flags["stack"]; ok {
 			params["log_stack"] = true
 		}
+		setStr(flags, params, "instance", "instance_filter")
 		// Auto-attach 0Harmony.dll path (next to this exe)
 		if exe, err := os.Executable(); err == nil {
 			harmonyPath := filepath.Join(filepath.Dir(exe), "0Harmony.dll")
