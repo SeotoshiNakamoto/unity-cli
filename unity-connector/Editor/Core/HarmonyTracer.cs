@@ -184,7 +184,11 @@ namespace UnityCliConnector
 
                 var prefix = typeof(HarmonyTracer).GetMethod(nameof(TracerPrefix),
                     BindingFlags.Static | BindingFlags.NonPublic);
-                var postfix = typeof(HarmonyTracer).GetMethod(nameof(TracerPostfix),
+
+                // void methods can't use __result in postfix
+                bool isVoid = original.ReturnType == typeof(void);
+                var postfixName = isVoid ? nameof(TracerPostfixVoid) : nameof(TracerPostfix);
+                var postfix = typeof(HarmonyTracer).GetMethod(postfixName,
                     BindingFlags.Static | BindingFlags.NonPublic);
 
                 var prefixHm = s_HarmonyMethodCtor.Invoke(new object[] { prefix });
@@ -358,6 +362,11 @@ namespace UnityCliConnector
             };
 
             EnqueueEntry(entry);
+        }
+
+        static void TracerPostfixVoid(MethodBase __originalMethod)
+        {
+            // no-op for void methods (call is already logged by prefix)
         }
 
         // --- Helpers ---
