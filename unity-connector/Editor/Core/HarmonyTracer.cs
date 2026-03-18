@@ -323,11 +323,13 @@ namespace UnityCliConnector
             if (!s_MethodToHook.TryGetValue(__originalMethod, out var hookId)) return;
             if (!s_Hooks.TryGetValue(hookId, out var info)) return;
 
+            // Resolve instance identity (GameObject name for Unity objects)
+            string instanceId = ResolveInstanceId(__instance);
+
             // Instance filter: skip if filter set and instance doesn't match
             if (info.InstanceFilter != null)
             {
-                var instStr = __instance != null ? SafeToString(__instance) : "";
-                if (!instStr.Contains(info.InstanceFilter)) return;
+                if (instanceId == null || !instanceId.Contains(info.InstanceFilter)) return;
             }
 
             info.CallCount++;
@@ -338,6 +340,7 @@ namespace UnityCliConnector
                 HookId = hookId,
                 Timestamp = DateTime.Now,
                 Direction = "call",
+                Instance = instanceId,
             };
 
             if (info.LogParams && __args != null && __args.Length > 0)
@@ -346,9 +349,6 @@ namespace UnityCliConnector
                 for (int i = 0; i < __args.Length; i++)
                     entry.Parameters[i] = SafeToString(__args[i]);
             }
-
-            if (__instance != null)
-                entry.Instance = SafeToString(__instance);
 
             if (info.LogStack)
                 entry.StackTrace = Environment.StackTrace;
@@ -425,6 +425,40 @@ namespace UnityCliConnector
             }
 
             return null;
+        }
+
+        static string ResolveInstanceId(object instance)
+        {
+            if (instance == null) return null;
+            try
+            {
+                // Try to get gameObject.name via reflection (works for Component, MonoBehaviour, BT Tasks)
+                var type = instance.GetType();
+
+                // 1) If it has an "agent" property (NodeCanvas Task) → agent.gameObject.name
+                var agentProp = type.GetProperty("agent", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (agentProp != null)
+                {
+                    var agent = agentProp.GetValue(instance) as UnityEngine.Component;
+                    if (agent != null && agent.gameObject != null)
+                        return agent.gameObject.name + " [" + agent.gameObject.GetInstanceID() + "]";
+                }
+
+                // 2) If it's a Component → gameObject.name
+                if (instance is UnityEngine.Component comp && comp.gameObject != null)
+                    return comp.gameObject.name + " [" + comp.gameObject.GetInstanceID() + "]";
+
+                // 3) If it's a GameObject
+                if (instance is UnityEngine.GameObject go)
+                    return go.name + " [" + go.GetInstanceID() + "]";
+
+                // 4) Fallback
+                return SafeToString(instance);
+            }
+            catch
+            {
+                return SafeToString(instance);
+            }
         }
 
         static string SafeToString(object obj)
