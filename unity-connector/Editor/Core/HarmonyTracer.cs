@@ -1,13 +1,17 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
-using HarmonyLib;
 
 namespace UnityCliConnector
 {
+    /// <summary>
+    /// Runtime method tracer using Harmony (loaded dynamically to avoid Burst scanner issues).
+    /// 0Harmony.dll is loaded from ~/.unity-cli/plugins/ on first use.
+    /// </summary>
     public static class HarmonyTracer
     {
         public struct HookInfo
@@ -43,9 +47,105 @@ namespace UnityCliConnector
         // Map original method -> hookId for prefix/postfix lookup
         static readonly ConcurrentDictionary<MethodBase, string> s_MethodToHook = new ConcurrentDictionary<MethodBase, string>();
 
+        // --- Harmony reflection cache (loaded once) ---
+        static Assembly s_HarmonyAsm;
+        static Type s_HarmonyType;        // HarmonyLib.Harmony
+        static Type s_HarmonyMethodType;  // HarmonyLib.HarmonyMethod
+        static ConstructorInfo s_HarmonyCtor;      // Harmony(string id)
+        static ConstructorInfo s_HarmonyMethodCtor; // HarmonyMethod(MethodInfo)
+        static MethodInfo s_PatchMethod;           // harmony.Patch(...)
+        static MethodInfo s_UnpatchAllMethod;      // harmony.UnpatchAll(string)
+        static bool s_Loaded;
+        static string s_LoadError;
+
+        static string FindHarmonyDll()
+        {
+            // 1) ~/.unity-cli/plugins/0Harmony.dll
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var candidate = Path.Combine(home, ".unity-cli", "plugins", "0Harmony.dll");
+            if (File.Exists(candidate)) return candidate;
+
+            // 2) Next to this assembly
+            var asmDir = Path.GetDirectoryName(typeof(HarmonyTracer).Assembly.Location);
+            if (!string.IsNullOrEmpty(asmDir))
+            {
+                candidate = Path.Combine(asmDir, "0Harmony.dll");
+                if (File.Exists(candidate)) return candidate;
+            }
+
+            return null;
+        }
+
+        static string EnsureHarmonyLoaded()
+        {
+            if (s_Loaded) return s_LoadError;
+
+            // Check if already loaded in AppDomain
+            s_HarmonyAsm = AppDomain.CurrentDomain.GetAssemblies()
+                .FirstOrDefault(a => a.GetName().Name == "0Harmony");
+
+            if (s_HarmonyAsm == null)
+            {
+                var dllPath = FindHarmonyDll();
+                if (dllPath == null)
+                {
+                    s_LoadError = "0Harmony.dll not found. Place it at: " +
+                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                            ".unity-cli", "plugins", "0Harmony.dll");
+                    s_Loaded = true;
+                    return s_LoadError;
+                }
+
+                try
+                {
+                    s_HarmonyAsm = Assembly.LoadFrom(dllPath);
+                }
+                catch (Exception ex)
+                {
+                    s_LoadError = $"Failed to load 0Harmony.dll: {ex.Message}";
+                    s_Loaded = true;
+                    return s_LoadError;
+                }
+            }
+
+            // Cache reflection handles
+            try
+            {
+                s_HarmonyType = s_HarmonyAsm.GetType("HarmonyLib.Harmony");
+                s_HarmonyMethodType = s_HarmonyAsm.GetType("HarmonyLib.HarmonyMethod");
+
+                s_HarmonyCtor = s_HarmonyType.GetConstructor(new[] { typeof(string) });
+                s_HarmonyMethodCtor = s_HarmonyMethodType.GetConstructor(new[] { typeof(MethodInfo) });
+
+                s_PatchMethod = s_HarmonyType.GetMethod("Patch", new[]
+                {
+                    typeof(MethodBase), s_HarmonyMethodType, s_HarmonyMethodType,
+                    s_HarmonyMethodType, s_HarmonyMethodType
+                });
+
+                s_UnpatchAllMethod = s_HarmonyType.GetMethod("UnpatchAll", new[] { typeof(string) });
+
+                if (s_HarmonyCtor == null || s_HarmonyMethodCtor == null ||
+                    s_PatchMethod == null || s_UnpatchAllMethod == null)
+                {
+                    s_LoadError = "Harmony API mismatch. Expected Harmony 2.x.";
+                }
+            }
+            catch (Exception ex)
+            {
+                s_LoadError = $"Failed to resolve Harmony API: {ex.Message}";
+            }
+
+            s_Loaded = true;
+            return s_LoadError;
+        }
+
         public static (string hookId, string error) Hook(string typeName, string methodName, string assemblyHint,
             bool logParams, bool logReturn, bool logStack)
         {
+            var loadError = EnsureHarmonyLoaded();
+            if (loadError != null) return (null, loadError);
+
             // Resolve type
             Type targetType = ResolveType(typeName, assemblyHint);
             if (targetType == null)
@@ -59,7 +159,7 @@ namespace UnityCliConnector
                 .ToArray();
             if (candidates.Length == 0)
                 return (null, $"Method '{methodName}' not found on type '{targetType.FullName}'.");
-            var original = candidates[0]; // first overload; TODO: allow signature selection
+            var original = candidates[0];
 
             // Generate hook ID
             string shortId = Guid.NewGuid().ToString("N").Substring(0, 6);
@@ -72,22 +172,25 @@ namespace UnityCliConnector
                 return (null, $"Method already hooked as '{existingId}'. Unhook first.");
             }
 
-            // Patch with Harmony
+            // Patch with Harmony (via reflection)
             try
             {
-                var harmony = new Harmony(hookId);
+                var harmonyInstance = s_HarmonyCtor.Invoke(new object[] { hookId });
+
                 var prefix = typeof(HarmonyTracer).GetMethod(nameof(TracerPrefix),
                     BindingFlags.Static | BindingFlags.NonPublic);
                 var postfix = typeof(HarmonyTracer).GetMethod(nameof(TracerPostfix),
                     BindingFlags.Static | BindingFlags.NonPublic);
 
-                harmony.Patch(original,
-                    prefix: new HarmonyMethod(prefix),
-                    postfix: new HarmonyMethod(postfix));
+                var prefixHm = s_HarmonyMethodCtor.Invoke(new object[] { prefix });
+                var postfixHm = s_HarmonyMethodCtor.Invoke(new object[] { postfix });
+
+                s_PatchMethod.Invoke(harmonyInstance, new object[] { original, prefixHm, postfixHm, null, null });
             }
             catch (Exception ex)
             {
-                return (null, $"Failed to patch: {ex.Message}");
+                var inner = ex.InnerException ?? ex;
+                return (null, $"Failed to patch: {inner.Message}");
             }
 
             var info = new HookInfo
@@ -114,14 +217,18 @@ namespace UnityCliConnector
             if (!s_Hooks.TryGetValue(hookId, out var info))
                 return $"Hook '{hookId}' not found.";
 
+            var loadError = EnsureHarmonyLoaded();
+            if (loadError != null) return loadError;
+
             try
             {
-                var harmony = new Harmony(hookId);
-                harmony.UnpatchAll(hookId);
+                var harmonyInstance = s_HarmonyCtor.Invoke(new object[] { hookId });
+                s_UnpatchAllMethod.Invoke(harmonyInstance, new object[] { hookId });
             }
             catch (Exception ex)
             {
-                return $"Failed to unpatch: {ex.Message}";
+                var inner = ex.InnerException ?? ex;
+                return $"Failed to unpatch: {inner.Message}";
             }
 
             s_MethodToHook.TryRemove(info.Original, out _);
@@ -182,7 +289,6 @@ namespace UnityCliConnector
             }
             else
             {
-                // Rebuild buffer without entries for this hookId
                 var keep = s_Buffer.Where(e => e.HookId != hookId).ToArray();
                 while (s_Buffer.TryDequeue(out _)) { }
                 foreach (var entry in keep) s_Buffer.Enqueue(entry);
@@ -198,14 +304,13 @@ namespace UnityCliConnector
             return null;
         }
 
-        // --- Harmony Callbacks ---
+        // --- Harmony Callbacks (parameter names are Harmony conventions) ---
 
         static void TracerPrefix(MethodBase __originalMethod, object __instance, object[] __args)
         {
             if (!s_MethodToHook.TryGetValue(__originalMethod, out var hookId)) return;
             if (!s_Hooks.TryGetValue(hookId, out var info)) return;
 
-            // Increment call count (thread-safe via struct copy limitation, best-effort)
             info.CallCount++;
             s_Hooks[hookId] = info;
 
