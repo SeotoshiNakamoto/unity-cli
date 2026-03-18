@@ -52,11 +52,14 @@ namespace UnityCliConnector
                 return (null, $"Type '{typeName}' not found." +
                     (string.IsNullOrEmpty(assemblyHint) ? " Try specifying --assembly." : ""));
 
-            // Resolve method
-            var original = targetType.GetMethod(methodName,
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static);
-            if (original == null)
+            // Resolve method (handle overloads — pick first match)
+            var candidates = targetType.GetMethods(
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)
+                .Where(m => m.Name == methodName)
+                .ToArray();
+            if (candidates.Length == 0)
                 return (null, $"Method '{methodName}' not found on type '{targetType.FullName}'.");
+            var original = candidates[0]; // first overload; TODO: allow signature selection
 
             // Generate hook ID
             string shortId = Guid.NewGuid().ToString("N").Substring(0, 6);
