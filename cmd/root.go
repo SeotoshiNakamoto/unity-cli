@@ -110,6 +110,8 @@ func Execute() error {
 		if err == nil {
 			resp, err = send("exec", params)
 		}
+	case "trace":
+		resp, err = traceCmd(subArgs, send)
 	default:
 		var params map[string]interface{}
 		params, err = buildParams(subArgs, nil)
@@ -349,6 +351,14 @@ Tests:
   test --mode PlayMode            Run PlayMode tests
   test --filter <name>            Filter by namespace, class, or full test name
 
+Trace (Harmony):
+  trace hook --type T --method M  Hook a method for call tracing
+  trace hook ... --stack          Include stack traces (expensive)
+  trace list                      List active hooks
+  trace read [--count N]          Read trace buffer (default: last 50)
+  trace unhook --id <hookId>      Remove a specific hook
+  trace clear                     Remove all hooks and clear buffer
+
 Profiler:
   profiler hierarchy              Top-level profiler samples (last frame)
   profiler hierarchy --depth 5    Recursive drill-down (0=unlimited)
@@ -548,6 +558,43 @@ Examples:
   unity-cli test --mode PlayMode
   unity-cli test --filter MyNamespace.MyTests
   unity-cli test --mode EditMode --filter MyNamespace.MyTests.SpecificTest
+`)
+	case "trace":
+		fmt.Print(`Usage: unity-cli trace <hook|unhook|list|read|clear> [options]
+
+Hook any C# method at runtime using Harmony for call tracing.
+No breakpoints needed — observe calls, parameters, and return values in real time.
+
+Subcommands:
+  hook                     Patch a method with tracing
+    --type <name>          Type name (e.g. PlayerController, UnityEngine.Transform)
+    --method <name>        Method name (e.g. TakeDamage, set_position)
+    --assembly <name>      Assembly hint, optional (e.g. Assembly-CSharp)
+    --stack                Log stack traces (expensive, off by default)
+    --no-params            Don't log parameters
+    --no-return            Don't log return values
+  unhook                   Remove a hook
+    --id <hookId>          Hook ID returned from 'hook'
+  list                     Show all active hooks with call counts
+  read                     Read trace buffer entries
+    --id <hookId>          Filter by hook (optional)
+    --count <N>            Max entries to return (default: 50)
+  clear                    Remove all hooks and clear buffer
+    --id <hookId>          Clear buffer for specific hook only (optional)
+
+Examples:
+  unity-cli trace hook --type PlayerController --method TakeDamage
+  unity-cli trace hook --type UnityEngine.Transform --method set_position --stack
+  unity-cli trace list
+  unity-cli trace read --count 20
+  unity-cli trace unhook --id "PlayerController.TakeDamage_a1b2c3"
+  unity-cli trace clear
+
+Notes:
+  - Hooks are lost on domain reload (script recompilation)
+  - Native/extern methods cannot be hooked
+  - Properties: use get_Name / set_Name (e.g. set_position)
+  - --stack adds significant overhead, use sparingly
 `)
 	case "list":
 		fmt.Print(`Usage: unity-cli list

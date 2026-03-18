@@ -24,6 +24,7 @@ var cliCommandMap = map[string]string{
 	"refresh_unity":     "editor refresh",
 	"reserialize_assets": "reserialize",
 	"manage_profiler":   "profiler",
+	"trace_method":      "trace",
 }
 
 func primeCmd(project string, port int) error {

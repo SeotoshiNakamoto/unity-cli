@@ -5,8 +5,10 @@
   "includePlatforms": ["Editor"],
   "excludePlatforms": [],
   "allowUnsafeCode": false,
-  "overrideReferences": false,
-  "precompiledReferences": [],
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "0Harmony.dll"
+  ],
   "autoReferenced": true,
   "defineConstraints": [],
   "versionDefines": [],

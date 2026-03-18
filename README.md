@@ -247,6 +247,40 @@ unity-cli reserialize Assets/Materials/Character.mat
 
 This is what makes text-based asset editing safe. Without it, a single misplaced YAML field can break a prefab with no visible error until runtime. With it, **AI agents can confidently modify any Unity asset through plain text** — add components to prefabs, adjust scene hierarchies, change material properties — and know the result will load correctly.
 
+### Trace (Harmony)
+
+Hook any C# method at runtime using [Harmony](https://github.com/pardeike/Harmony) — no breakpoints, no code changes, no recompilation. Observe calls, parameters, return values, and stack traces in real time.
+
+```bash
+# Hook a method
+unity-cli trace hook --type PlayerController --method TakeDamage
+
+# Hook with stack traces (expensive)
+unity-cli trace hook --type UnityEngine.Transform --method set_position --stack
+
+# List active hooks
+unity-cli trace list
+
+# Read trace buffer
+unity-cli trace read
+unity-cli trace read --count 20
+
+# Read trace for a specific hook
+unity-cli trace read --id "PlayerController.TakeDamage_a1b2c3"
+
+# Remove a hook
+unity-cli trace unhook --id "PlayerController.TakeDamage_a1b2c3"
+
+# Remove all hooks and clear buffer
+unity-cli trace clear
+```
+
+Notes:
+- Hooks are lost on domain reload (script recompilation) — this is expected
+- Native/extern methods (e.g. some Unity internals) cannot be hooked
+- For properties, use the compiled method name: `get_position` / `set_position`
+- `--stack` adds significant overhead, use sparingly
+
 ### Profiler
 
 ```bash
@@ -455,6 +489,19 @@ unity-cli --port 8091 editor play
 # Default: uses the most recently registered instance
 unity-cli editor play
 ```
+
+## AI Agent Integration
+
+The `prime` command outputs Unity connection status and all available tools in a format designed for LLM context injection:
+
+```bash
+# Inject Unity context into an AI agent's prompt
+unity-cli prime
+```
+
+This prints the connection state, port, project path, and a compact list of all registered tools (built-in + custom). AI agents that can run shell commands get immediate access to Unity's full runtime — no MCP config, no tool registration ceremony.
+
+You can also place a `guide.md` file next to the `unity-cli` binary to inject project-specific instructions into the prime output.
 
 ## Compared to MCP
 

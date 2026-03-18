@@ -247,6 +247,40 @@ unity-cli reserialize Assets/Materials/Character.mat
 
 이것이 텍스트 기반 에셋 수정을 안전하게 만드는 핵심입니다. 이게 없으면 YAML 필드 하나 잘못 놓은 것이 런타임에서야 드러나는 프리팹 파손으로 이어집니다. 이게 있으면 **AI 에이전트가 어떤 Unity 에셋이든 텍스트로 자신 있게 수정**할 수 있습니다 — 프리팹에 컴포넌트 추가, 씬 계층 구조 변경, 머티리얼 속성 조정 — 결과가 정상적으로 로드된다는 것을 보장하면서.
 
+### 트레이스 (Harmony)
+
+[Harmony](https://github.com/pardeike/Harmony)를 사용하여 런타임에 아무 C# 메서드나 후킹합니다 — 브레이크포인트 없이, 코드 수정 없이, 재컴파일 없이. 호출, 파라미터, 리턴값, 스택 트레이스를 실시간으로 확인합니다.
+
+```bash
+# 메서드 후킹
+unity-cli trace hook --type PlayerController --method TakeDamage
+
+# 스택 트레이스 포함 후킹 (성능 비용 높음)
+unity-cli trace hook --type UnityEngine.Transform --method set_position --stack
+
+# 활성 훅 목록
+unity-cli trace list
+
+# 트레이스 버퍼 읽기
+unity-cli trace read
+unity-cli trace read --count 20
+
+# 특정 훅의 트레이스만 읽기
+unity-cli trace read --id "PlayerController.TakeDamage_a1b2c3"
+
+# 훅 제거
+unity-cli trace unhook --id "PlayerController.TakeDamage_a1b2c3"
+
+# 모든 훅 제거 및 버퍼 초기화
+unity-cli trace clear
+```
+
+참고:
+- 도메인 리로드(스크립트 재컴파일) 시 훅이 소멸됩니다 — 정상 동작
+- native/extern 메서드(일부 Unity 내부 메서드)는 후킹 불가
+- 프로퍼티는 컴파일된 메서드 이름으로 후킹: `get_position` / `set_position`
+- `--stack` 옵션은 오버헤드가 크므로 필요한 경우만 사용
+
 ### 프로파일러
 
 ```bash
@@ -455,6 +489,19 @@ unity-cli --port 8091 editor play
 # 기본: 가장 최근 등록된 인스턴스 사용
 unity-cli editor play
 ```
+
+## AI 에이전트 연동
+
+`prime` 명령은 Unity 연결 상태와 사용 가능한 모든 도구를 LLM 컨텍스트 주입용 형식으로 출력합니다:
+
+```bash
+# AI 에이전트 프롬프트에 Unity 컨텍스트 주입
+unity-cli prime
+```
+
+연결 상태, 포트, 프로젝트 경로, 등록된 모든 도구(내장 + 커스텀)의 압축 목록을 출력합니다. 셸 명령을 실행할 수 있는 AI 에이전트라면 MCP 설정이나 도구 등록 절차 없이 Unity 전체 런타임에 즉시 접근할 수 있습니다.
+
+`unity-cli` 바이너리 옆에 `guide.md` 파일을 두면 프로젝트별 지침을 prime 출력에 포함할 수 있습니다.
 
 ## MCP와 비교
 
