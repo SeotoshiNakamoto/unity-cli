@@ -436,12 +436,20 @@ namespace UnityCliConnector
                 var type = instance.GetType();
 
                 // 1) If it has an "agent" property (NodeCanvas Task) → agent.gameObject.name
-                var agentProp = type.GetProperty("agent", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                if (agentProp != null)
+                //    Walk up to find the base Task.agent (Component) to avoid ambiguity with generic overrides
+                var current = type;
+                while (current != null && current != typeof(object))
                 {
-                    var agent = agentProp.GetValue(instance) as UnityEngine.Component;
-                    if (agent != null && agent.gameObject != null)
-                        return agent.gameObject.name + " [" + agent.gameObject.GetInstanceID() + "]";
+                    var agentProp = current.GetProperty("agent",
+                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+                    if (agentProp != null && typeof(UnityEngine.Component).IsAssignableFrom(agentProp.PropertyType))
+                    {
+                        var agent = agentProp.GetValue(instance) as UnityEngine.Component;
+                        if (agent != null && agent.gameObject != null)
+                            return agent.gameObject.name + " [" + agent.gameObject.GetInstanceID() + "]";
+                        break;
+                    }
+                    current = current.BaseType;
                 }
 
                 // 2) If it's a Component → gameObject.name
