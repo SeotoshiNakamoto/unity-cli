@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/youngwoocho02/unity-cli/internal/client"
 )
@@ -30,6 +32,13 @@ func traceCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 		}
 		if _, ok := flags["stack"]; ok {
 			params["log_stack"] = true
+		}
+		// Auto-attach 0Harmony.dll path (next to this exe)
+		if exe, err := os.Executable(); err == nil {
+			harmonyPath := filepath.Join(filepath.Dir(exe), "0Harmony.dll")
+			if _, err := os.Stat(harmonyPath); err == nil {
+				params["harmony_path"] = filepath.ToSlash(harmonyPath)
+			}
 		}
 	case "unhook":
 		setStr(flags, params, "id", "hook_id")

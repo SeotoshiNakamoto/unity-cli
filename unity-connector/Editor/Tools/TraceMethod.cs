@@ -69,6 +69,11 @@ namespace UnityCliConnector.Tools
             var logReturn = p.GetBool("logReturn", true);
             var logStack = p.GetBool("logStack", false);
 
+            // Pass Harmony DLL path hint from CLI
+            var harmonyPath = p.Get("harmonyPath") ?? p.Get("harmony_path");
+            if (!string.IsNullOrEmpty(harmonyPath))
+                HarmonyTracer.SetHarmonyPath(harmonyPath);
+
             var (hookId, error) = HarmonyTracer.Hook(typeName, methodName, assembly, logParams, logReturn, logStack);
             if (error != null)
                 return new ErrorResponse(error);

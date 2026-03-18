@@ -58,20 +58,25 @@ namespace UnityCliConnector
         static bool s_Loaded;
         static string s_LoadError;
 
+        static string s_HarmonyDllHint; // path hint from CLI
+
+        /// <summary>Set DLL path hint before calling Hook (called by TraceMethod).</summary>
+        public static void SetHarmonyPath(string path)
+        {
+            if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                s_HarmonyDllHint = path;
+        }
+
         static string FindHarmonyDll()
         {
-            // 1) ~/.unity-cli/plugins/0Harmony.dll
+            // 1) Hint from CLI (next to unity-cli.exe)
+            if (!string.IsNullOrEmpty(s_HarmonyDllHint) && File.Exists(s_HarmonyDllHint))
+                return s_HarmonyDllHint;
+
+            // 2) ~/.unity-cli/plugins/0Harmony.dll
             var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             var candidate = Path.Combine(home, ".unity-cli", "plugins", "0Harmony.dll");
             if (File.Exists(candidate)) return candidate;
-
-            // 2) Next to this assembly
-            var asmDir = Path.GetDirectoryName(typeof(HarmonyTracer).Assembly.Location);
-            if (!string.IsNullOrEmpty(asmDir))
-            {
-                candidate = Path.Combine(asmDir, "0Harmony.dll");
-                if (File.Exists(candidate)) return candidate;
-            }
 
             return null;
         }
