@@ -103,6 +103,12 @@ func Execute() error {
 		resp, err = menuCmd(subArgs, send)
 	case "reserialize":
 		resp, err = reserializeCmd(subArgs, send)
+	case "test":
+		// No timeout — EditMode holds connection open until tests finish
+		testSend := func(command string, params interface{}) (*client.CommandResponse, error) {
+			return client.Send(inst, command, params, 0)
+		}
+		resp, err = testCmd(subArgs, testSend, inst.Port)
 	default:
 		// Direct custom tool call — flags become params directly
 		// e.g. `unity-cli system_tree --depth 1 --scope project` → {"depth":1,"scope":"project"}
@@ -287,6 +293,11 @@ Reserialize:
     reserialize Assets/Scenes/Main.unity
     reserialize Assets/Prefabs/A.prefab Assets/Prefabs/B.prefab
 
+Tests:
+  test                            Run EditMode tests (default)
+  test --mode PlayMode            Run PlayMode tests
+  test --filter <name>            Filter by namespace, class, or full test name
+
 Profiler:
   profiler hierarchy              Top-level profiler samples (last frame)
   profiler hierarchy --depth 5    Recursive drill-down (0=unlimited)
@@ -437,6 +448,27 @@ Examples:
   unity-cli profiler hierarchy --root SimulationSystem --depth 3
   unity-cli profiler hierarchy --frames 30 --min 0.5 --sort self
   unity-cli profiler enable
+`)
+	case "test":
+		fmt.Print(`Usage: unity-cli test [options]
+
+Run Unity tests via the Test Runner API.
+
+Options:
+  --mode <EditMode|PlayMode>    Test mode (default: EditMode)
+  --filter <name>               Filter by namespace, class, or full test name
+                                Must be the full path (e.g. MyNamespace.MyClass)
+
+EditMode tests hold the connection open and return results directly.
+PlayMode tests return immediately and poll a results file (domain reload safe).
+
+Requires the Unity Test Framework package (com.unity.test-framework).
+
+Examples:
+  unity-cli test
+  unity-cli test --mode PlayMode
+  unity-cli test --filter MyNamespace.MyTests
+  unity-cli test --mode EditMode --filter MyNamespace.MyTests.SpecificTest
 `)
 	case "list":
 		fmt.Print(`Usage: unity-cli list
