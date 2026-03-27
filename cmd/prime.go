@@ -77,7 +77,7 @@ func primeCmd(project string, port int) error {
 	}
 	sb.WriteString("파라미터 상세는 `list` 명령으로 확인.\n\n")
 	sb.WriteString("## 팁\n")
-	sb.WriteString("- 시각적 확인이 필요하면 `screenshot` 사용 (씬/게임 뷰 캡쳐). UI 레이아웃, 오브젝트 배치, 셰이더 결과 등.\n")
+	sb.WriteString("- 시각적 확인이 필요하면 `screenshot --width 1280 --height 720` 사용 (씬/게임 뷰 캡쳐). UI 레이아웃, 오브젝트 배치, 셰이더 결과 등. 기본 1920x1080이지만 토큰 절약을 위해 720p 권장.\n")
 	sb.WriteString("- 수치 확인은 `exec`가 더 빠르고 정확함. screenshot은 눈으로 봐야 할 때만.\n")
 
 	fmt.Print(sb.String())
