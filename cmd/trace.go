@@ -4,9 +4,24 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/youngwoocho02/unity-cli/internal/client"
 )
+
+func setStr(flags map[string]string, params map[string]interface{}, flagKey, paramKey string) {
+	if v, ok := flags[flagKey]; ok {
+		params[paramKey] = v
+	}
+}
+
+func setInt(flags map[string]string, params map[string]interface{}, flagKey, paramKey string) {
+	if v, ok := flags[flagKey]; ok {
+		if n, err := strconv.Atoi(v); err == nil {
+			params[paramKey] = n
+		}
+	}
+}
 
 func traceCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 	if len(args) == 0 {
