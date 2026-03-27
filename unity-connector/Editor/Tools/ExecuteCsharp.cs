@@ -75,10 +75,27 @@ namespace UnityCliConnector.Tools
             sb.AppendLine();
             sb.AppendLine("public static class __CliDynamic {");
             sb.AppendLine("  public static object Execute() {");
-            sb.AppendLine(code);
+            sb.AppendLine(WrapExpression(code));
             sb.AppendLine("  }");
             sb.AppendLine("}");
             return sb.ToString();
+        }
+
+        private static string WrapExpression(string code)
+        {
+            var trimmed = code.Trim();
+            // Already has return or is multi-statement — leave as-is
+            if (trimmed.StartsWith("return ") || trimmed.StartsWith("return;") || trimmed.Contains("\n"))
+                return code;
+            // Single expression without semicolon — wrap with return
+            if (!trimmed.EndsWith(";"))
+                return $"return {trimmed};";
+            // Single statement with semicolon but no return — could be expression or void call
+            // If it doesn't contain assignment/declaration keywords, try wrapping
+            if (!trimmed.StartsWith("var ") && !trimmed.StartsWith("int ") && !trimmed.StartsWith("string ")
+                && !trimmed.Contains("=") && !trimmed.StartsWith("Debug."))
+                return $"return {trimmed.TrimEnd(';')};";
+            return code;
         }
 
         private static object CompileAndExecute(string source, string cscOverride = null)
@@ -102,6 +119,7 @@ namespace UnityCliConnector.Tools
                 rsp.AppendLine("-nologo");
                 rsp.AppendLine("-nowarn:0105,1701,1702");
                 rsp.AppendLine("-langversion:latest");
+                rsp.AppendLine("-codepage:65001");
                 rsp.AppendLine($"\"{srcFile}\"");
 
                 var added = new HashSet<string>();
