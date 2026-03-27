@@ -111,7 +111,7 @@ func DiscoverInstance(project string, port int) (*Instance, error) {
 
 	if project != "" {
 		for _, inst := range alive {
-			if strings.Contains(inst.ProjectPath, project) {
+			if strings.Contains(strings.ToLower(inst.ProjectPath), strings.ToLower(project)) {
 				return &inst, nil
 			}
 		}
