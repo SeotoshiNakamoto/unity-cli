@@ -487,9 +487,14 @@ Note: File/Quit is blocked for safety.
 Capture a screenshot of the Unity editor.
 
 Options:
-  --view <mode>      scene (default), game
-  --width <N>        Image width in pixels (default: 1920)
-  --height <N>       Image height in pixels (default: 1080)
+  --view <mode>         scene (default), game, window
+  --action <action>     capture (default), list_windows
+  --window_type <name>  EditorWindow type name (e.g. InspectorWindow, ConsoleWindow)
+  --window_title <text> Find window by title text (substring match)
+  --width <N>           Image width in pixels (default: 1920 for scene/game,
+                        window actual size for window)
+  --height <N>          Image height in pixels (default: 1080 for scene/game,
+                        window actual size for window)
   --output_path <path>  Output path, absolute or relative to project root
                         (default: Screenshots/screenshot.png)
 
@@ -497,6 +502,9 @@ Examples:
   unity-cli screenshot
   unity-cli screenshot --view game
   unity-cli screenshot --view scene --width 3840 --height 2160
+  unity-cli screenshot --view window --window_type InspectorWindow
+  unity-cli screenshot --view window --window_title "Console"
+  unity-cli screenshot --action list_windows
   unity-cli screenshot --output_path captures/my_scene.png
 `)
 	case "reserialize":
