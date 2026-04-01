@@ -78,6 +78,7 @@ func primeCmd(project string, port int) error {
 	sb.WriteString("파라미터 상세는 `list` 명령으로 확인.\n\n")
 	sb.WriteString("## 팁\n")
 	sb.WriteString("- 시각적 확인이 필요하면 `screenshot --width 1280 --height 720 --output_path d:/tmp/screenshot.png` 사용. 항상 같은 경로에 덮어쓰고 Read 도구로 읽을 것. 토큰 절약을 위해 720p 권장.\n")
+	sb.WriteString("- Inspector 등 에디터 창 캡처: `screenshot --view window --window_type InspectorWindow --output_path d:/tmp/screenshot.png`. 열린 창 목록은 `screenshot --action list_windows`로 확인.\n")
 	sb.WriteString("- 수치 확인은 `exec`가 더 빠르고 정확함. screenshot은 눈으로 봐야 할 때만.\n")
 
 	fmt.Print(sb.String())
