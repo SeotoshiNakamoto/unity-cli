@@ -110,8 +110,9 @@ func DiscoverInstance(project string, port int) (*Instance, error) {
 	}
 
 	if project != "" {
+		projectNorm := filepath.ToSlash(project)
 		for _, inst := range alive {
-			if strings.Contains(strings.ToLower(inst.ProjectPath), strings.ToLower(project)) {
+			if strings.Contains(strings.ToLower(inst.ProjectPath), strings.ToLower(projectNorm)) {
 				return &inst, nil
 			}
 		}
