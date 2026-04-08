@@ -27,15 +27,20 @@ func statusCmd(inst *client.Instance) error {
 	return nil
 }
 
-// readStatus finds the instance file matching the given port.
+// readStatus finds the instance file matching the given port (any state).
 func readStatus(port int) (*client.Instance, error) {
 	return client.FindByPort(port)
+}
+
+// readActiveStatus finds the active (non-stopped) instance on the given port.
+func readActiveStatus(port int) (*client.Instance, error) {
+	return client.FindActiveByPort(port)
 }
 
 // waitForAlive reads the current timestamp, then polls until a newer one appears.
 func waitForAlive(port int, timeoutMs int) error {
 	baseline := time.Now().UnixMilli()
-	if status, err := readStatus(port); err == nil {
+	if status, err := readActiveStatus(port); err == nil {
 		baseline = status.Timestamp
 	}
 
@@ -49,7 +54,7 @@ func waitForAlive(port int, timeoutMs int) error {
 	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
 	for time.Now().Before(deadline) {
 		time.Sleep(500 * time.Millisecond)
-		status, err := readStatus(port)
+		status, err := readActiveStatus(port)
 		if err != nil {
 			continue
 		}
@@ -70,7 +75,7 @@ func waitForReady(port int) bool {
 	deadline := time.Now().Add(5 * time.Minute)
 	for time.Now().Before(deadline) {
 		time.Sleep(500 * time.Millisecond)
-		status, err := readStatus(port)
+		status, err := readActiveStatus(port)
 		if err != nil {
 			continue
 		}

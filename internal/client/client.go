@@ -37,12 +37,19 @@ type CommandResponse struct {
 	Data    json.RawMessage `json:"data,omitempty"`
 }
 
+// isProcessDead returns true only when the process is confirmed to not exist.
+// Permission errors or transient failures return false (not confirmed dead),
+// so the instance file is preserved.
+// Defaults to the OS-specific implementation; overridden in tests.
+var isProcessDead = checkProcessDead
+
 func instancesDir() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".unity-cli", "instances")
 }
 
 // ScanInstances reads all instance files from ~/.unity-cli/instances/.
+// Stale files whose PID is no longer running are automatically removed.
 func ScanInstances() ([]Instance, error) {
 	dir := instancesDir()
 	entries, err := os.ReadDir(dir)
@@ -55,7 +62,8 @@ func ScanInstances() ([]Instance, error) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		fp := filepath.Join(dir, e.Name())
+		data, err := os.ReadFile(fp)
 		if err != nil {
 			continue
 		}
@@ -63,23 +71,57 @@ func ScanInstances() ([]Instance, error) {
 		if err := json.Unmarshal(data, &inst); err != nil {
 			continue
 		}
+		if inst.PID > 0 && isProcessDead(inst.PID) {
+			_ = os.Remove(fp)
+			continue
+		}
 		instances = append(instances, inst)
 	}
 	return instances, nil
 }
 
-// FindByPort scans instance files and returns the one matching the given port.
+// FindByPort scans instance files and returns the instance matching the given port.
+// If multiple instances share the same port, the one with the most recent timestamp wins.
 func FindByPort(port int) (*Instance, error) {
 	instances, err := ScanInstances()
 	if err != nil {
 		return nil, err
 	}
-	for _, inst := range instances {
-		if inst.Port == port {
-			return &inst, nil
+	var best *Instance
+	for i, inst := range instances {
+		if inst.Port != port {
+			continue
+		}
+		if best == nil || inst.Timestamp > best.Timestamp {
+			best = &instances[i]
 		}
 	}
-	return nil, fmt.Errorf("no instance on port %d", port)
+	if best == nil {
+		return nil, fmt.Errorf("no instance on port %d", port)
+	}
+	return best, nil
+}
+
+// FindActiveByPort is like FindByPort but skips stopped instances.
+// Used by polling paths (waitForAlive, waitForReady) that only care about live instances.
+func FindActiveByPort(port int) (*Instance, error) {
+	instances, err := ScanInstances()
+	if err != nil {
+		return nil, err
+	}
+	var best *Instance
+	for i, inst := range instances {
+		if inst.Port != port || inst.State == "stopped" {
+			continue
+		}
+		if best == nil || inst.Timestamp > best.Timestamp {
+			best = &instances[i]
+		}
+	}
+	if best == nil {
+		return nil, fmt.Errorf("no active instance on port %d", port)
+	}
+	return best, nil
 }
 
 // DiscoverInstance finds a running Unity instance from ~/.unity-cli/instances/.

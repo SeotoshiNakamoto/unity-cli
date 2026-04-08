@@ -96,7 +96,7 @@ unity-cli editor play --wait
 unity-cli exec "return Application.dataPath;"
 
 # Read console logs
-unity-cli console --filter error,warning,log
+unity-cli console --type error,warning,log
 ```
 
 ## How It Works
@@ -187,10 +187,10 @@ unity-cli console
 unity-cli console --lines 20 --filter error,warning,log
 
 # Read only errors
-unity-cli console --filter error
+unity-cli console --type error
 
-# Include stack traces (short: filtered, full: raw)
-unity-cli console --stacktrace short
+# Include stack traces (user: user code only, full: raw)
+unity-cli console --stacktrace user
 
 # Clear console
 unity-cli console --clear
@@ -200,7 +200,7 @@ unity-cli console --clear
 
 Run arbitrary C# code inside the Unity Editor at runtime. This is the most powerful command — it gives you full access to UnityEngine, UnityEditor, ECS, and every loaded assembly. No need to write a custom tool for one-off queries or mutations.
 
-Use `return` to get output. Common namespaces are included by default. Add `--usings` only for project-specific types (e.g. `Unity.Entities`). The csc compiler is auto-detected; if detection fails, specify it manually with `--csc <path>`.
+Use `return` to get output. Common namespaces are included by default. Add `--usings` only for project-specific types (e.g. `Unity.Entities`). The csc compiler and dotnet runtime are auto-detected; if detection fails, specify manually with `--csc <path>` or `--dotnet <path>`.
 
 ```bash
 unity-cli exec "return Application.dataPath;"

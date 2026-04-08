@@ -310,8 +310,8 @@ Editor Control:
 Console:
   console                       Read error & warning logs (default)
   console --lines 20            Limit to N entries
-  console --filter error,warning,log   Filter by log types (comma-separated)
-  console --stacktrace short    Stack trace: none (default), short, full
+  console --type error,warning,log   Filter by log types (comma-separated)
+  console --stacktrace full     Stack trace: none, user (default), full
   console --clear               Clear console
 
 Execute C#:
@@ -425,18 +425,17 @@ Read Unity console log entries.
 
 Options:
   --lines <N>          Limit to N entries
-  --filter <types>     Comma-separated log types: error, warning, log (default: error,warning,log)
-  --filter_text <str>  Filter log messages containing this text
-  --stacktrace <mode>  none: first line only (default)
-                        short: with stack trace, internal frames filtered
+  --type <types>       Comma-separated log types: error, warning, log (default: error,warning,log)
+  --stacktrace <mode>  none: first line only
+                        user: with stack trace, internal frames filtered (default)
                         full: raw message including all frames
   --clear              Clear console
 
 Examples:
   unity-cli console
-  unity-cli console --lines 20 --filter error,warning,log
-  unity-cli console --stacktrace short
-  unity-cli console --filter error --stacktrace full
+  unity-cli console --lines 20 --type error,warning,log
+  unity-cli console --stacktrace user
+  unity-cli console --type error --stacktrace full
   unity-cli console --clear
 `)
 	case "exec":
@@ -451,6 +450,7 @@ Options:
   --file <path>        Read C# code from a file (no escaping needed)
   --usings <ns1,ns2>   Add extra using directives
   --csc <path>         Path to csc compiler (csc.dll or csc.exe). Auto-detected if omitted.
+  --dotnet <path>      Path to dotnet runtime. Auto-detected if omitted.
 
 Default usings: System, System.Collections.Generic, System.IO, System.Linq,
   System.Reflection, System.Threading.Tasks, UnityEngine,

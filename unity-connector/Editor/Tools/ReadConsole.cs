@@ -55,17 +55,14 @@ namespace UnityCliConnector.Tools
 
         public class Parameters
         {
-            [ToolParameter("Filter: comma-separated log types (error, warning, log). Default: error,warning,log")]
-            public string Filter { get; set; }
+            [ToolParameter("Comma-separated log types: error, warning, log. Default: error,warning,log")]
+            public string Type { get; set; }
 
             [ToolParameter("Maximum number of log entries to return")]
             public int Lines { get; set; }
 
-            [ToolParameter("Stack trace mode: none (first line), short (filtered), full (raw). Default: none")]
+            [ToolParameter("Stack trace mode: none (first line), user (user code frames only), full (raw). Default: user")]
             public string Stacktrace { get; set; }
-
-            [ToolParameter("Filter log messages containing this text")]
-            public string FilterText { get; set; }
 
             [ToolParameter("Clear console")]
             public bool Clear { get; set; }
@@ -84,23 +81,22 @@ namespace UnityCliConnector.Tools
             var p = new ToolParams(@params);
 
             // --clear
-            if (p.GetBool("clear") || p.Get("action", "").ToLower() == "clear")
+            if (p.GetBool("clear"))
             {
                 _clearMethod.Invoke(null, null);
                 return new SuccessResponse("Console cleared.");
             }
 
-            var filter = p.Get("filter", "error,warning,log").ToLower();
-            var types = filter.Split(',').Select(t => t.Trim()).Where(t => t.Length > 0).ToList();
+            var type = p.Get("type", "error,warning,log").ToLower();
+            var types = type.Split(',').Select(t => t.Trim()).Where(t => t.Length > 0).ToList();
 
             int? count = p.GetInt("lines") ?? p.GetInt("count");
-            string filterText = p.Get("filter_text");
-            string stacktrace = p.Get("stacktrace", "none").ToLower();
+            string stacktrace = p.Get("stacktrace", "user").ToLower();
 
-            return GetEntries(types, count, filterText, stacktrace);
+            return GetEntries(types, count, stacktrace);
         }
 
-        private static object GetEntries(List<string> types, int? count, string filterText, string stacktrace)
+        private static object GetEntries(List<string> types, int? count, string stacktrace)
         {
             var entries = new List<string>();
             try
@@ -122,7 +118,6 @@ namespace UnityCliConnector.Tools
                         : types.Contains(logType.ToString().ToLowerInvariant());
 
                     if (!want) continue;
-                    if (!string.IsNullOrEmpty(filterText) && message.IndexOf(filterText, StringComparison.OrdinalIgnoreCase) < 0) continue;
 
                     entries.Add(FormatMessage(message, stacktrace));
 
@@ -144,7 +139,7 @@ namespace UnityCliConnector.Tools
                 case "full":
                     return message;
 
-                case "short":
+                case "user":
                     var lines = message.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
                     var sb = new System.Text.StringBuilder();
                     foreach (var line in lines)

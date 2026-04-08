@@ -33,7 +33,7 @@ func TestReadStatus_ValidFile(t *testing.T) {
 		State:        "ready",
 		ProjectPath:  "/home/user/MyProject",
 		Port:         8090,
-		PID:          12345,
+		PID:          os.Getpid(),
 		UnityVersion: "6000.3.10f1",
 		Timestamp:    1000000,
 	}
