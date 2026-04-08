@@ -112,6 +112,8 @@ func Execute() error {
 		}
 	case "trace":
 		resp, err = traceCmd(subArgs, send)
+	case "job":
+		resp, err = jobCmd(subArgs, send)
 	default:
 		var params map[string]interface{}
 		params, err = buildParams(subArgs, nil)
@@ -319,12 +321,14 @@ Execute C#:
   exec --file <path>            Run C# code from a file (no escaping needed)
   echo '<code>' | exec          Pipe code via stdin (avoids shell escaping)
   exec "<code>" --usings x,y    Add extra using directives
+  exec "<code>" --async          Fire-and-forget, returns job_id immediately
 
   Examples:
     exec "Time.time"
     exec "GameObject.FindObjectsOfType<Camera>().Length"
     exec --file /tmp/script.cs
     exec "var go = new GameObject(\"Test\"); return go.name;"
+    exec "HeavyOperation()" --async
 
 Menu:
   menu "<path>"                 Execute Unity menu item by path
@@ -371,6 +375,10 @@ Profiler:
   profiler disable               Stop profiler recording
   profiler status                Show profiler state
   profiler clear                 Clear all captured frames
+
+Async Jobs:
+  job <job_id>                  Poll and wait for async job result
+  job <job_id> --timeout 600000 Custom poll timeout
 
 Custom Tools:
   list                          List all registered tools with parameter schemas
@@ -451,6 +459,7 @@ Options:
   --usings <ns1,ns2>   Add extra using directives
   --csc <path>         Path to csc compiler (csc.dll or csc.exe). Auto-detected if omitted.
   --dotnet <path>      Path to dotnet runtime. Auto-detected if omitted.
+  --async              Fire-and-forget: return job_id immediately, poll with 'job' command
 
 Default usings: System, System.Collections.Generic, System.IO, System.Linq,
   System.Reflection, System.Threading.Tasks, UnityEngine,
@@ -468,6 +477,20 @@ Notes:
   - --file is recommended for complex code (avoids shell escaping)
   - Pipe code via stdin: echo '<code>' | unity-cli exec [--usings ns1,ns2]
   - Use 'return' for output, 'return null;' for void operations
+`)
+	case "job":
+		fmt.Print(`Usage: unity-cli job <job_id>
+
+Poll and wait for an async job result.
+Use with 'exec --async' to run long operations without timeout.
+
+Options:
+  --timeout <ms>       Poll timeout in ms (default: 120000)
+
+Examples:
+  unity-cli exec "HeavyOperation()" --async   # returns job_id
+  unity-cli job exec_143022_1                  # poll until done
+  unity-cli exec "Build()" --async | xargs unity-cli job
 `)
 	case "menu":
 		fmt.Print(`Usage: unity-cli menu "<path>"

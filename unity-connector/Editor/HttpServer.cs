@@ -205,6 +205,11 @@ namespace UnityCliConnector
                         result = new ErrorResponse("Missing 'command' field");
                         response.StatusCode = 400;
                     }
+                    else if (command == "job_status")
+                    {
+                        var jobId = parameters?["job_id"]?.ToString();
+                        result = AsyncJobManager.GetJobStatus(jobId);
+                    }
                     else
                     {
                         var tcs = new TaskCompletionSource<object>();
@@ -215,7 +220,16 @@ namespace UnityCliConnector
                             Tcs = tcs,
                         });
                         ForceEditorUpdate();
-                        result = await tcs.Task;
+
+                        if (parameters?["async"]?.Value<bool>() == true)
+                        {
+                            var jobId = AsyncJobManager.CreateJob(command, tcs);
+                            result = new SuccessResponse("job_created", new { job_id = jobId });
+                        }
+                        else
+                        {
+                            result = await tcs.Task;
+                        }
                     }
                 }
             }
