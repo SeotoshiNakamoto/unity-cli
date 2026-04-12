@@ -99,10 +99,13 @@ func pollTestResults(port int) (*client.CommandResponse, error) {
 			return &resp, nil
 		}
 
-		// Check Unity process is still alive (heartbeat may be stale during domain reload)
+		// Check Unity process is still alive
 		inst, err := readStatus(port)
 		if err == nil && inst.State == "stopped" {
 			return nil, fmt.Errorf("unity editor has stopped (port %d)", port)
+		}
+		if unityGone(port) {
+			return nil, fmt.Errorf("unity process exited (port %d)", port)
 		}
 	}
 

@@ -43,6 +43,11 @@ type CommandResponse struct {
 // Defaults to the OS-specific implementation; overridden in tests.
 var isProcessDead = checkProcessDead
 
+// IsProcessDead exposes the process-alive check for use by cmd package.
+func IsProcessDead(pid int) bool {
+	return isProcessDead(pid)
+}
+
 func instancesDir() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".unity-cli", "instances")

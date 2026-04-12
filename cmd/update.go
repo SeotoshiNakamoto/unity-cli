@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 const repoAPI = "https://api.github.com/repos/youngwoocho02/unity-cli/releases/latest"
@@ -93,8 +94,10 @@ func updateCmd(args []string) error {
 	return nil
 }
 
+var httpShort = &http.Client{Timeout: 5 * time.Second}
+
 func fetchLatestRelease() (*ghRelease, error) {
-	resp, err := http.Get(repoAPI)
+	resp, err := httpShort.Get(repoAPI)
 	if err != nil {
 		return nil, err
 	}

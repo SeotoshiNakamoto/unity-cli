@@ -37,6 +37,22 @@ func readActiveStatus(port int) (*client.Instance, error) {
 	return client.FindActiveByPort(port)
 }
 
+// unityGone checks if the Unity process is confirmed dead by looking at the
+// heartbeat staleness and OS process status. A stale heartbeat alone is not
+// enough (domain reloads can stall for 30+ seconds), so we require both
+// conditions: heartbeat older than 30s AND the process no longer exists.
+func unityGone(port int) bool {
+	status, err := readStatus(port)
+	if err != nil {
+		return false // no file — can't confirm
+	}
+	age := time.Since(time.UnixMilli(status.Timestamp))
+	if age < 30*time.Second {
+		return false // heartbeat still fresh enough
+	}
+	return status.PID > 0 && client.IsProcessDead(status.PID)
+}
+
 // waitForAlive reads the current timestamp, then polls until a newer one appears.
 func waitForAlive(port int, timeoutMs int) error {
 	baseline := time.Now().UnixMilli()
@@ -54,6 +70,9 @@ func waitForAlive(port int, timeoutMs int) error {
 	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
 	for time.Now().Before(deadline) {
 		time.Sleep(500 * time.Millisecond)
+		if unityGone(port) {
+			return fmt.Errorf("unity process exited (port %d)", port)
+		}
 		status, err := readActiveStatus(port)
 		if err != nil {
 			continue
@@ -67,7 +86,7 @@ func waitForAlive(port int, timeoutMs int) error {
 	return fmt.Errorf("timed out waiting for Unity (port %d)", port)
 }
 
-// waitForReady polls indefinitely until the heartbeat state becomes "ready".
+// waitForReady polls until the heartbeat state becomes "ready".
 // Returns true if compilation had errors.
 func waitForReady(port int) bool {
 	fmt.Fprintf(os.Stderr, "Waiting for compilation...\n")
@@ -75,6 +94,10 @@ func waitForReady(port int) bool {
 	deadline := time.Now().Add(5 * time.Minute)
 	for time.Now().Before(deadline) {
 		time.Sleep(500 * time.Millisecond)
+		if unityGone(port) {
+			fmt.Fprintf(os.Stderr, "Unity process exited during compilation.\n")
+			return true
+		}
 		status, err := readActiveStatus(port)
 		if err != nil {
 			continue
