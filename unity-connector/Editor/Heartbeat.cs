@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Newtonsoft.Json;
 using UnityEditor;
+using UnityEditor.Compilation;
 using UnityEngine;
 
 namespace UnityCliConnector
@@ -17,7 +18,6 @@ namespace UnityCliConnector
         static double s_LastWrite;
         const double INTERVAL = 0.5;
         static string s_ForcedState;
-        static double s_CompileRequestTime;
         static string s_FilePath;
 
         static Heartbeat()
@@ -27,6 +27,8 @@ namespace UnityCliConnector
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
             AssemblyReloadEvents.afterAssemblyReload += () => { s_ForcedState = null; s_LastWrite = 0; };
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
+            CompilationPipeline.compilationStarted += OnCompilationStarted;
+            CompilationPipeline.compilationFinished += OnCompilationFinished;
         }
 
         static void OnBeforeAssemblyReload()
@@ -46,14 +48,15 @@ namespace UnityCliConnector
             Write();
         }
 
-        /// <summary>
-        /// Marks that a compile was requested. Keeps "compiling" state forced
-        /// for a grace period so the CLI poller never sees a premature "ready".
-        /// </summary>
-        public static void MarkCompileRequested()
+        static void OnCompilationStarted(object context)
         {
-            s_CompileRequestTime = EditorApplication.timeSinceStartup;
             WriteState("compiling");
+        }
+
+        static void OnCompilationFinished(object context)
+        {
+            // compilationFinished fires before domain reload.
+            // Don't clear forced state here — beforeAssemblyReload will take over.
         }
 
         static void Tick()
@@ -63,16 +66,6 @@ namespace UnityCliConnector
             var now = EditorApplication.timeSinceStartup;
             if (now - s_LastWrite < INTERVAL) return;
             s_LastWrite = now;
-
-            if (s_CompileRequestTime > 0)
-            {
-                if (now - s_CompileRequestTime < 3.0 && EditorApplication.isCompiling == false)
-                {
-                    Write();
-                    return;
-                }
-                s_CompileRequestTime = 0;
-            }
 
             s_ForcedState = null;
             Write();

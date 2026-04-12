@@ -35,7 +35,6 @@ namespace UnityCliConnector.Tools
 
             if (string.Equals(compile, "request", StringComparison.OrdinalIgnoreCase))
             {
-                Heartbeat.MarkCompileRequested();
                 CompilationPipeline.RequestScriptCompilation();
                 compileRequested = true;
             }
