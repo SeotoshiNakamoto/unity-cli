@@ -96,7 +96,7 @@ func Execute() error {
 		resp, err = editorCmd(subArgs, send, inst.Port)
 	case "test":
 		testSend := func(command string, params interface{}) (*client.CommandResponse, error) {
-			return client.Send(inst, command, params, 0)
+			return client.Send(inst, command, params, 600000) // 10 min — EditMode tests can be long
 		}
 		resp, err = testCmd(subArgs, testSend, inst.Port)
 	case "exec":
@@ -313,6 +313,7 @@ Console:
   console                       Read error & warning logs (default)
   console --lines 20            Limit to N entries
   console --type error,warning,log   Filter by log types (comma-separated)
+  console --filter "keyword"    Show only entries containing substring
   console --stacktrace full     Stack trace: none, user (default), full
   console --clear               Clear console
 
@@ -434,6 +435,7 @@ Read Unity console log entries.
 Options:
   --lines <N>          Limit to N entries
   --type <types>       Comma-separated log types: error, warning, log (default: error,warning,log)
+  --filter <text>      Show only entries containing this substring (case-insensitive)
   --stacktrace <mode>  none: first line only
                         user: with stack trace, internal frames filtered (default)
                         full: raw message including all frames
@@ -442,6 +444,7 @@ Options:
 Examples:
   unity-cli console
   unity-cli console --lines 20 --type error,warning,log
+  unity-cli console --filter "NullReference"
   unity-cli console --stacktrace user
   unity-cli console --type error --stacktrace full
   unity-cli console --clear

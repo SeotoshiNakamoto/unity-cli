@@ -64,6 +64,9 @@ namespace UnityCliConnector.Tools
             [ToolParameter("Stack trace mode: none (first line), user (user code frames only), full (raw). Default: user")]
             public string Stacktrace { get; set; }
 
+            [ToolParameter("Filter entries containing this substring (case-insensitive)")]
+            public string Filter { get; set; }
+
             [ToolParameter("Clear console")]
             public bool Clear { get; set; }
         }
@@ -92,13 +95,15 @@ namespace UnityCliConnector.Tools
 
             int? count = p.GetInt("lines") ?? p.GetInt("count");
             string stacktrace = p.Get("stacktrace", "user").ToLower();
+            string filter = p.Get("filter");
 
-            return GetEntries(types, count, stacktrace);
+            return GetEntries(types, count, stacktrace, filter);
         }
 
-        private static object GetEntries(List<string> types, int? count, string stacktrace)
+        private static object GetEntries(List<string> types, int? count, string stacktrace, string filter)
         {
             var entries = new List<string>();
+            bool hasFilter = !string.IsNullOrEmpty(filter);
             try
             {
                 _startGettingEntriesMethod.Invoke(null, null);
@@ -118,6 +123,9 @@ namespace UnityCliConnector.Tools
                         : types.Contains(logType.ToString().ToLowerInvariant());
 
                     if (!want) continue;
+
+                    if (hasFilter && message.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0)
+                        continue;
 
                     entries.Add(FormatMessage(message, stacktrace));
 
