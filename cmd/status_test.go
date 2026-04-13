@@ -40,6 +40,7 @@ func TestReadStatus_ValidFile(t *testing.T) {
 
 	home := writeInstanceFile(t, want)
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 
 	got, err := readStatus(8090)
 	if err != nil {
@@ -57,7 +58,9 @@ func TestReadStatus_ValidFile(t *testing.T) {
 }
 
 func TestReadStatus_MissingFile(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	_, err := readStatus(9999)
 	if err == nil {
 		t.Error("expected error for missing status file")
@@ -74,6 +77,7 @@ func TestReadStatus_InvalidJSON(t *testing.T) {
 		t.Fatalf("failed to write file: %v", err)
 	}
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 
 	_, err := readStatus(8090)
 	if err == nil {

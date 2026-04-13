@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/youngwoocho02/unity-cli/internal/client"
 )
@@ -58,7 +57,7 @@ func primeCmd(project string, port int) error {
 
 	// Status line
 	sb.WriteString("## 연결 상태\n")
-	sb.WriteString(fmt.Sprintf("Port: %d | Project: %s | State: ready\n\n", inst.Port, inst.ProjectPath))
+	fmt.Fprintf(&sb, "Port: %d | Project: %s | State: ready\n\n", inst.Port, inst.ProjectPath)
 
 	// 3. Compact tool list
 	sb.WriteString("## 사용 가능한 도구\n")
@@ -68,9 +67,9 @@ func primeCmd(project string, port int) error {
 			for _, t := range tools {
 				cliCmd := cliCommandMap[t.Name]
 				if cliCmd != "" {
-					sb.WriteString(fmt.Sprintf("- %s (%s): %s\n", t.Name, cliCmd, t.Description))
+					fmt.Fprintf(&sb, "- %s (%s): %s\n", t.Name, cliCmd, t.Description)
 				} else {
-					sb.WriteString(fmt.Sprintf("- %s: %s\n", t.Name, t.Description))
+					fmt.Fprintf(&sb, "- %s: %s\n", t.Name, t.Description)
 				}
 			}
 		}
@@ -107,22 +106,4 @@ func loadGuideFile() string {
 	// Trim trailing whitespace but keep structure
 	content := strings.TrimRight(string(data), " \t\r\n")
 	return content
-}
-
-// waitForAliveQuick is a short timeout version for prime
-func waitForAliveQuick(port int) bool {
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		_, err := client.Send(
-			&client.Instance{Port: port},
-			"list_tools",
-			map[string]interface{}{},
-			1000,
-		)
-		if err == nil {
-			return true
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-	return false
 }
