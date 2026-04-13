@@ -22,6 +22,21 @@ namespace UnityCliConnector.Tools
 
         public static object HandleCommand(JObject @params)
         {
+            // Play 모드 / 컴파일 중 / Play 모드 전환 직전 refresh 는 도메인 리로드를 유발하여
+            // 실행 중 상태(씬/코루틴/네트워크/Library DLL 로딩)를 손상시킨다.
+            // AssetDatabase.Refresh 호출 전에 하드 블록.
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                return new ErrorResponse(
+                    "Cannot refresh while Play mode is active or transitioning — domain reload would corrupt scene/network/asmdef state. Stop Play and retry.");
+            }
+
+            if (EditorApplication.isCompiling)
+            {
+                return new ErrorResponse(
+                    "Cannot refresh while scripts are compiling — would trigger a second reload. Wait for compilation to finish and retry.");
+            }
+
             var p = new ToolParams(@params ?? new JObject());
             string mode = p.Get("mode", "if_dirty");
             string scope = p.Get("scope", "all");
