@@ -112,6 +112,8 @@ func Execute() error {
 		}
 	case "trace":
 		resp, err = traceCmd(subArgs, send)
+	case "ui":
+		resp, err = uiCmd(subArgs, send)
 	case "job":
 		resp, err = jobCmd(subArgs, send)
 	default:
@@ -377,6 +379,16 @@ Profiler:
   profiler status                Show profiler state
   profiler clear                 Clear all captured frames
 
+UI (UIToolkit):
+  ui snapshot                         Capture UI element tree as JSON + screenshot
+  ui snapshot --window Inspector      Target specific window
+  ui snapshot --visible-only          Only visible elements
+  ui snapshot --depth 3               Limit tree depth
+  ui tree                             Print element tree as text
+  ui tree --depth 3                   Limit depth
+  ui query "type=Button"              Find element by selector
+  ui click "id=save-btn"              Click element by selector
+
 Async Jobs:
   job <job_id>                  Poll and wait for async job result
   job <job_id> --timeout 600000 Custom poll timeout
@@ -629,6 +641,45 @@ Notes:
   - Native/extern methods cannot be hooked
   - Properties: use get_Name / set_Name (e.g. set_position)
   - --stack adds significant overhead, use sparingly
+`)
+	case "ui":
+		fmt.Print(`Usage: unity-cli ui <snapshot|tree|query|click> [options]
+
+Observe, query, and interact with UIToolkit elements in Unity.
+
+Subcommands:
+  snapshot                     Capture UI element tree as JSON + screenshot
+    --window <name>            Target window by title or type (substring match)
+    --output <prefix>          Output path prefix (default: Screenshots/ui-snapshot)
+                               Produces <prefix>.json and <prefix>.png
+    --depth <N>                Limit tree depth (0=unlimited, default: 0)
+    --filter <text>            Filter elements by text substring
+    --visible-only             Only include visible elements
+    --no-screenshot            Skip screenshot, JSON only
+  tree                         Print element tree as indented text
+    --window <name>            Target window
+    --depth <N>                Limit depth (0=unlimited, default: 0)
+  query <selector>             Find element matching selector
+    --window <name>            Target window
+  click <selector>             Click element matching selector
+
+Selectors:
+  label=Save                   Exact text match
+  label~=Save                  Partial text match
+  id=save-btn                  VisualElement.name match
+  type=Button                  Type name match
+  path=root/toolbar            Hierarchy path match
+  label=Save type=Button       Compound (AND)
+  type=Button [0]              Index (first match)
+
+Examples:
+  unity-cli ui snapshot
+  unity-cli ui snapshot --window Inspector --visible-only --depth 3
+  unity-cli ui tree --depth 3
+  unity-cli ui query "type=Button"
+  unity-cli ui query "label=Save type=Button"
+  unity-cli ui click "id=save-btn"
+  unity-cli ui click "type=Button [0]"
 `)
 	case "list":
 		fmt.Print(`Usage: unity-cli list
