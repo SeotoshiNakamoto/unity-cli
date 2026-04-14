@@ -68,7 +68,7 @@ namespace UnityCliConnector.UIToolkit
                 foreach (var doc in documents)
                 {
                     var root = doc.rootVisualElement;
-                    if (root == null || root.childCount == 0)
+                    if (root == null)
                         continue;
 
                     var title = doc.gameObject.name;

@@ -18,7 +18,14 @@ namespace UnityCliConnector.UIToolkit
         internal static bool CaptureWindow(PanelInfo panel, string outputPath)
         {
             if (panel.IsRuntime)
-                return CaptureGameView(outputPath);
+            {
+                // Runtime UIToolkit is rendered as overlay on GameView.
+                // Camera.Render() does NOT include UIToolkit. Must capture the GameView window.
+                var gameView = FindEditorWindowByType("GameView");
+                if (gameView != null)
+                    return CaptureEditorWindow(gameView, outputPath);
+                return false;
+            }
 
             var window = FindEditorWindow(panel.WindowTitle, panel.WindowType);
             if (window == null)
@@ -33,6 +40,17 @@ namespace UnityCliConnector.UIToolkit
             foreach (var w in allWindows)
             {
                 if (w.GetType().Name == typeName && w.titleContent.text == title)
+                    return w;
+            }
+            return null;
+        }
+
+        static EditorWindow FindEditorWindowByType(string typeName)
+        {
+            var allWindows = Resources.FindObjectsOfTypeAll<EditorWindow>();
+            foreach (var w in allWindows)
+            {
+                if (w.GetType().Name == typeName)
                     return w;
             }
             return null;

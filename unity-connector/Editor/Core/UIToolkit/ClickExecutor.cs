@@ -8,7 +8,7 @@ namespace UnityCliConnector.UIToolkit
     internal struct ClickResult
     {
         public bool Success;
-        public string Strategy;  // "delegate_invoke", "click_event", "pointer_events"
+        public string Strategy;  // "click_event", "delegate_invoke", "pointer_events"
         public string Error;
     }
 
@@ -21,19 +21,40 @@ namespace UnityCliConnector.UIToolkit
             if (target == null)
                 return new ClickResult { Success = false, Error = "Target element is null" };
 
-            // Strategy 1: Delegate invoke (Button.clickable.clicked)
-            var result = TryDelegateInvoke(target);
+            // Strategy 1: ClickEvent synthesis (covers RegisterCallback<ClickEvent> AND Button.clicked)
+            var result = TryClickEvent(target);
             if (result.Success)
                 return result;
 
-            // Strategy 2: ClickEvent synthesis via panel
-            result = TryClickEvent(target);
+            // Strategy 2: Delegate invoke (Button.clickable.clicked direct call)
+            result = TryDelegateInvoke(target);
             if (result.Success)
                 return result;
 
             // Strategy 3: PointerDown/Up synthesis
             result = TryPointerEvents(target);
             return result;
+        }
+
+        static ClickResult TryClickEvent(VisualElement target)
+        {
+            try
+            {
+                var panel = target.panel;
+                if (panel == null)
+                    return new ClickResult { Success = false, Error = "Element has no panel" };
+
+                using (var evt = ClickEvent.GetPooled())
+                {
+                    evt.target = target;
+                    target.SendEvent(evt);
+                }
+                return new ClickResult { Success = true, Strategy = "click_event" };
+            }
+            catch (Exception e)
+            {
+                return new ClickResult { Success = false, Error = $"ClickEvent failed: {e.Message}" };
+            }
         }
 
         static ClickResult TryDelegateInvoke(VisualElement target)
@@ -47,7 +68,6 @@ namespace UnityCliConnector.UIToolkit
 
             try
             {
-                // Access the private m_Clicked field (backing field for clicked event)
                 var clickedField = typeof(Clickable).GetField("m_Clicked", kNonPublicInstance);
                 if (clickedField == null)
                     clickedField = typeof(Clickable).GetField("clicked", kNonPublicInstance);
@@ -62,46 +82,11 @@ namespace UnityCliConnector.UIToolkit
                     }
                 }
 
-                // Fallback: try Clickable.Invoke (internal method in some Unity versions)
-                var invokeMethod = typeof(Clickable).GetMethod("Invoke", kNonPublicInstance);
-                if (invokeMethod != null)
-                {
-                    invokeMethod.Invoke(clickable, new object[] { null });
-                    return new ClickResult { Success = true, Strategy = "delegate_invoke" };
-                }
-
                 return new ClickResult { Success = false, Error = "No invocable delegate found" };
             }
             catch (Exception e)
             {
                 return new ClickResult { Success = false, Error = $"Delegate invoke failed: {e.Message}" };
-            }
-        }
-
-        static ClickResult TryClickEvent(VisualElement target)
-        {
-            try
-            {
-                var panel = target.panel;
-                if (panel == null)
-                    return new ClickResult { Success = false, Error = "Element has no panel" };
-
-                var wb = target.worldBound;
-                var pos = wb.center;
-
-                // Use NavigationSubmitEvent as a more reliable alternative for triggering click callbacks,
-                // then fall back to using reflection to create and dispatch a ClickEvent.
-                // Direct ClickEvent.GetPooled() is unreliable across Unity versions.
-                using (var evt = NavigationSubmitEvent.GetPooled())
-                {
-                    evt.target = target;
-                    target.SendEvent(evt);
-                }
-                return new ClickResult { Success = true, Strategy = "click_event" };
-            }
-            catch (Exception e)
-            {
-                return new ClickResult { Success = false, Error = $"ClickEvent failed: {e.Message}" };
             }
         }
 
@@ -117,8 +102,6 @@ namespace UnityCliConnector.UIToolkit
                 var center = wb.center;
                 var screenCenter = new Vector3(center.x, center.y, 0);
 
-                // PointerDownEvent/PointerUpEvent: use reflection to set position fields
-                // since the public API for GetPooled with position varies by Unity version.
                 SendPointerEvent<PointerDownEvent>(target, screenCenter);
                 SendPointerEvent<PointerUpEvent>(target, screenCenter);
 
@@ -136,14 +119,9 @@ namespace UnityCliConnector.UIToolkit
             {
                 evt.target = target;
 
-                // Set position via reflection — these are writable internal properties
                 var baseType = typeof(PointerEventBase<T>);
                 SetField(baseType, evt, "m_LocalPosition", position);
                 SetField(baseType, evt, "m_Position", position);
-
-                // Also try the EventBase position fields
-                var eventBaseType = typeof(EventBase);
-                SetField(eventBaseType, evt, "m_Position", position);
 
                 target.SendEvent(evt);
             }
