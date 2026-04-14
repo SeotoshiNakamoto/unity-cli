@@ -82,6 +82,7 @@ func primeCmd(project string, port int) error {
 	sb.WriteString("- 수치 확인은 `exec`가 더 빠르고 정확함. screenshot은 눈으로 봐야 할 때만.\n")
 	sb.WriteString("- UI 탐색 (play mode): `ui tree`로 UIToolkit 트리 확인, `ui query \"type=Button\"`로 요소 검색, `ui snapshot`은 JSON+스크린샷 동시 캡처.\n")
 	sb.WriteString("- UI 클릭: `ui click \"id=save-btn\"` — 클릭 후 diff를 자동 반환. diff에 added/removed/changed 포함되어 별도 snapshot 불필요.\n")
+	sb.WriteString("- UI 텍스트 입력: `ui type \"id=input-name\" \"PlayerOne\"` — TextField에 텍스트 입력 + diff 반환. ChangeEvent 자동 발행.\n")
 	sb.WriteString("- 화면 전환 감지 (play mode): `ui events`로 UIDocument 추가/제거 이벤트 확인. 로딩 완료, 새 UI 등장 등 비동기 전환 감지. 호출 시 이벤트 큐를 읽고 비움.\n")
 	sb.WriteString("\n## async 실행\n")
 	sb.WriteString("- 120초 초과 예상 시 반드시 --async 사용 (예: 빌드, 대량 에셋 순회, 번들 빌드)\n")
