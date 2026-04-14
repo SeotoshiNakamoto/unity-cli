@@ -51,8 +51,6 @@ namespace UnityCliConnector.Tools
                 return ListWindows();
 
             var view = p.Get("view", "scene").ToLowerInvariant();
-            var width = p.GetInt("width", DefaultWidth).Value;
-            var height = p.GetInt("height", DefaultHeight).Value;
             var outputPath = ResolveOutputPath(p.Get("output_path"));
 
             try
@@ -64,9 +62,11 @@ namespace UnityCliConnector.Tools
                 switch (view)
                 {
                     case "scene":
-                        return CaptureSceneView(width, height, outputPath);
+                        @params["window_type"] = "SceneView";
+                        return CaptureEditorWindow(p, outputPath);
                     case "game":
-                        return CaptureGameView(width, height, outputPath);
+                        @params["window_type"] = "GameView";
+                        return CaptureEditorWindow(p, outputPath);
                     case "window":
                         return CaptureEditorWindow(p, outputPath);
                     default:
