@@ -9,7 +9,7 @@ import (
 
 func uiCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 	if len(args) == 0 {
-		return nil, fmt.Errorf("usage: unity-cli ui <snapshot|tree|query|click> [options]\nUse 'unity-cli ui --help' for details")
+		return nil, fmt.Errorf("usage: unity-cli ui <snapshot|tree|query|click|events> [options]\nUse 'unity-cli ui --help' for details")
 	}
 
 	action := args[0]

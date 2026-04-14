@@ -644,7 +644,7 @@ Notes:
   - --stack adds significant overhead, use sparingly
 `)
 	case "ui":
-		fmt.Print(`Usage: unity-cli ui <snapshot|tree|query|click> [options]
+		fmt.Print(`Usage: unity-cli ui <snapshot|tree|query|click|events> [options]
 
 Observe, query, and interact with UIToolkit elements in Unity.
 
