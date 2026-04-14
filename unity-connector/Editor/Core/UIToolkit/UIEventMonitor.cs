@@ -27,7 +27,12 @@ namespace UnityCliConnector.UIToolkit
         {
             EditorApplication.update += Tick;
             EditorApplication.playModeStateChanged += _ => Reset();
-            AssemblyReloadEvents.afterAssemblyReload += Reset;
+            AssemblyReloadEvents.beforeAssemblyReload += () => EditorApplication.update -= Tick;
+            AssemblyReloadEvents.afterAssemblyReload += () =>
+            {
+                Reset();
+                EditorApplication.update += Tick;
+            };
         }
 
         static void Reset()
@@ -95,12 +100,12 @@ namespace UnityCliConnector.UIToolkit
                 int childCount = root != null ? root.childCount : 0;
                 var name = doc.gameObject.name;
 
-                // Disambiguate duplicate names
+                // Disambiguate duplicate names (§ won't appear in real GameObject names)
                 if (fp.ContainsKey(name))
                 {
                     int suffix = 2;
-                    while (fp.ContainsKey(name + "#" + suffix)) suffix++;
-                    name = name + "#" + suffix;
+                    while (fp.ContainsKey(name + "§" + suffix)) suffix++;
+                    name = name + "§" + suffix;
                 }
 
                 fp[name] = childCount;
@@ -118,7 +123,12 @@ namespace UnityCliConnector.UIToolkit
 
         static string EscapeJson(string s)
         {
-            return s.Replace("\\", "\\\\").Replace("\"", "\\\"");
+            if (string.IsNullOrEmpty(s)) return s;
+            return s.Replace("\\", "\\\\")
+                    .Replace("\"", "\\\"")
+                    .Replace("\n", "\\n")
+                    .Replace("\r", "\\r")
+                    .Replace("\t", "\\t");
         }
 
         static void AppendEvents(List<string> events)

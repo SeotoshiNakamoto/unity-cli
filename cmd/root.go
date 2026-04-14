@@ -388,7 +388,7 @@ UI (UIToolkit):
   ui tree --depth 3                   Limit depth
   ui query "type=Button"              Find element by selector
   ui click "id=save-btn"              Click element (returns before/after diff)
-  ui events                           Read pending UI change events
+  ui events                           Read pending UI change events (play mode)
 
 Async Jobs:
   job <job_id>                  Poll and wait for async job result
@@ -688,6 +688,22 @@ Examples:
   unity-cli ui click "id=save-btn"
   unity-cli ui click "type=Button [0]"
   unity-cli ui events
+
+Click diff output format:
+  {
+    "id": "id:btn-start", "label": "Start", "strategy": "click_event",
+    "diff": {
+      "added":   [{"id": "...", "label": "Loading...", "type": "Label"}],
+      "removed": [{"id": "...", "label": "Start",      "type": "Button"}],
+      "changed": [{"id": "...", "field": "visible", "from": false, "to": true}]
+    }
+  }
+
+Events output format (play mode only):
+  [
+    {"ts": "...", "type": "screen_added",   "name": "LobbyTK",   "element_count": 18},
+    {"ts": "...", "type": "screen_removed", "name": "LoadingTK",  "element_count": 0}
+  ]
 `)
 	case "list":
 		fmt.Print(`Usage: unity-cli list
