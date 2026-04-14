@@ -9,7 +9,7 @@ import (
 
 func uiCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 	if len(args) == 0 {
-		return nil, fmt.Errorf("usage: unity-cli ui <snapshot|tree|query|click|events> [options]\nUse 'unity-cli ui --help' for details")
+		return nil, fmt.Errorf("usage: unity-cli ui <snapshot|tree|query|click|type|events> [options]\nUse 'unity-cli ui --help' for details")
 	}
 
 	action := args[0]
@@ -51,14 +51,41 @@ func uiCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 		params["selector"] = selector
 		setStr(flags, params, "window", "window")
 
+	case "type":
+		// ui type <selector> <text> [--window <name>]
+		// selector and text are positional: everything before the last token is selector, last is text
+		positional := extractPositional(rest)
+		selector, text := splitSelectorText(positional)
+		if selector == "" || text == "" {
+			return nil, fmt.Errorf("usage: unity-cli ui type <selector> <text> [--window <name>]\nExample: unity-cli ui type \"id=input-name\" \"PlayerOne\"")
+		}
+		params["selector"] = selector
+		params["text"] = text
+		setStr(flags, params, "window", "window")
+
 	case "events":
 		// no extra params
 
 	default:
-		return nil, fmt.Errorf("unknown ui action: %s\nAvailable: snapshot, tree, query, click, events", action)
+		return nil, fmt.Errorf("unknown ui action: %s\nAvailable: snapshot, tree, query, click, type, events", action)
 	}
 
 	return send("ui_snapshot", params)
+}
+
+// splitSelectorText splits "id=input-name PlayerOne" into selector "id=input-name" and text "PlayerOne".
+// Tokens containing '=' or starting with '[' are selector parts; the rest is text.
+func splitSelectorText(positional string) (selector, text string) {
+	parts := strings.Split(positional, " ")
+	var selParts, textParts []string
+	for _, p := range parts {
+		if strings.Contains(p, "=") || strings.HasPrefix(p, "[") {
+			selParts = append(selParts, p)
+		} else {
+			textParts = append(textParts, p)
+		}
+	}
+	return strings.Join(selParts, " "), strings.Join(textParts, " ")
 }
 
 // extractPositional collects non-flag tokens and joins them with spaces.

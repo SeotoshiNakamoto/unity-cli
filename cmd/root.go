@@ -388,6 +388,7 @@ UI (UIToolkit):
   ui tree --depth 3                   Limit depth
   ui query "type=Button"              Find element by selector
   ui click "id=save-btn"              Click element (returns before/after diff)
+  ui type "id=input" "text"           Type text into field (returns diff)
   ui events                           Read pending UI change events (play mode)
 
 Async Jobs:
@@ -644,7 +645,7 @@ Notes:
   - --stack adds significant overhead, use sparingly
 `)
 	case "ui":
-		fmt.Print(`Usage: unity-cli ui <snapshot|tree|query|click|events> [options]
+		fmt.Print(`Usage: unity-cli ui <snapshot|tree|query|click|type|events> [options]
 
 Observe, query, and interact with UIToolkit elements in Unity.
 
@@ -663,6 +664,10 @@ Subcommands:
   query <selector>             Find element matching selector
     --window <name>            Target window
   click <selector>             Click element matching selector
+                               Returns before/after diff automatically.
+    --window <name>            Target window
+  type <selector> <text>       Type text into a TextField
+                               Sets value and dispatches ChangeEvent.
                                Returns before/after diff automatically.
     --window <name>            Target window
   events                       Read and clear pending UI change events.
@@ -687,6 +692,7 @@ Examples:
   unity-cli ui query "label=Save type=Button"
   unity-cli ui click "id=save-btn"
   unity-cli ui click "type=Button [0]"
+  unity-cli ui type "id=input-name" "PlayerOne"
   unity-cli ui events
 
 Click diff output format:

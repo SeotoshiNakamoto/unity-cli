@@ -47,9 +47,10 @@ namespace UnityCliConnector.Tools
                 case "tree":    return DoTree(p);
                 case "query":   return DoQuery(p);
                 case "click":   return DoClick(p);
+                case "type":    return DoType(p);
                 case "events":  return DoEvents();
                 default:
-                    return new ErrorResponse($"Unknown action '{action}'. Valid: snapshot, tree, query, click, events.");
+                    return new ErrorResponse($"Unknown action '{action}'. Valid: snapshot, tree, query, click, type, events.");
             }
         }
 
@@ -249,6 +250,76 @@ namespace UnityCliConnector.Tools
                             });
                     }
                     return new ErrorResponse($"Click failed on '{target.Id}': {clickResult.Error}");
+                }
+            }
+
+            return new ErrorResponse($"No element matching '{selectorStr}' found.");
+        }
+
+        static object DoType(ToolParams p)
+        {
+            var selectorStr = p.Get("selector");
+            if (string.IsNullOrEmpty(selectorStr))
+                return new ErrorResponse("'selector' is required for type action.");
+
+            var text = p.Get("text");
+            if (text == null)
+                return new ErrorResponse("'text' is required for type action.");
+
+            var query = SelectorParser.Parse(selectorStr);
+            var windowFilter = p.Get("window");
+            var panels = PanelDiscovery.FindPanels(windowFilter);
+
+            var allPanels = PanelDiscovery.FindPanels(null);
+            var before = TreeDiff.SnapshotLite(allPanels);
+
+            foreach (var panel in panels)
+            {
+                var result = VisualElementTraverser.Traverse(
+                    panel.Root, panel.WindowTitle, panel.WindowType,
+                    panel.WindowRect, panel.IsRuntime,
+                    maxDepth: 0, visibleOnly: false, textFilter: null);
+
+                var matches = SelectorParser.FindMatches(query, result.Elements);
+                if (matches.Count > 0)
+                {
+                    var target = query.Index >= 0 && query.Index < matches.Count
+                        ? matches[query.Index]
+                        : matches[0];
+
+                    if (target.SourceElement == null)
+                        return new ErrorResponse($"Element '{target.Id}' is no longer available.");
+
+                    var element = target.SourceElement;
+
+                    // Set value — .value setter auto-dispatches ChangeEvent
+                    if (element is UnityEngine.UIElements.TextField tf)
+                    {
+                        tf.value = text;
+                    }
+                    else if (element is UnityEngine.UIElements.BaseField<string> sf)
+                    {
+                        sf.value = text;
+                    }
+                    else
+                    {
+                        return new ErrorResponse(
+                            $"Element '{target.Id}' is {target.TypeName}, not a text field.");
+                    }
+
+                    var afterPanels = PanelDiscovery.FindPanels(null);
+                    var after = TreeDiff.SnapshotLite(afterPanels);
+                    var diff = TreeDiff.ComputeDiff(before, after);
+
+                    return new SuccessResponse(
+                        $"Typed '{text}' into '{target.Label ?? target.Id}'",
+                        new Newtonsoft.Json.Linq.JObject
+                        {
+                            ["id"] = target.Id,
+                            ["label"] = target.Label,
+                            ["text"] = text,
+                            ["diff"] = diff,
+                        });
                 }
             }
 
