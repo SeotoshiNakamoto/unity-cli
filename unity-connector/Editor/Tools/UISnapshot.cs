@@ -47,8 +47,9 @@ namespace UnityCliConnector.Tools
                 case "tree":    return DoTree(p);
                 case "query":   return DoQuery(p);
                 case "click":   return DoClick(p);
+                case "events":  return DoEvents();
                 default:
-                    return new ErrorResponse($"Unknown action '{action}'. Valid: snapshot, tree, query, click.");
+                    return new ErrorResponse($"Unknown action '{action}'. Valid: snapshot, tree, query, click, events.");
             }
         }
 
@@ -207,6 +208,10 @@ namespace UnityCliConnector.Tools
             var windowFilter = p.Get("window");
             var panels = PanelDiscovery.FindPanels(windowFilter);
 
+            // Pre-click snapshot for diff
+            var allPanels = PanelDiscovery.FindPanels(null);
+            var before = TreeDiff.SnapshotLite(allPanels);
+
             foreach (var panel in panels)
             {
                 var result = VisualElementTraverser.Traverse(
@@ -225,17 +230,51 @@ namespace UnityCliConnector.Tools
                         return new ErrorResponse($"Element '{target.Id}' is no longer available.");
 
                     var clickResult = ClickExecutor.Execute(target.SourceElement);
+
+                    // Post-click snapshot + diff (synchronous — handler already executed)
+                    var afterPanels = PanelDiscovery.FindPanels(null);
+                    var after = TreeDiff.SnapshotLite(afterPanels);
+                    var diff = TreeDiff.ComputeDiff(before, after);
+
                     if (clickResult.Success)
                     {
                         return new SuccessResponse(
                             $"Clicked '{target.Label ?? target.Id}' via {clickResult.Strategy}",
-                            new { id = target.Id, label = target.Label, strategy = clickResult.Strategy });
+                            new Newtonsoft.Json.Linq.JObject
+                            {
+                                ["id"] = target.Id,
+                                ["label"] = target.Label,
+                                ["strategy"] = clickResult.Strategy,
+                                ["diff"] = diff,
+                            });
                     }
                     return new ErrorResponse($"Click failed on '{target.Id}': {clickResult.Error}");
                 }
             }
 
             return new ErrorResponse($"No element matching '{selectorStr}' found.");
+        }
+
+        static object DoEvents()
+        {
+            var lines = UIEventMonitor.ReadAndClear();
+            if (lines.Length == 0)
+                return new SuccessResponse("No pending events.", new Newtonsoft.Json.Linq.JArray());
+
+            var events = new Newtonsoft.Json.Linq.JArray();
+            foreach (var line in lines)
+            {
+                try
+                {
+                    events.Add(Newtonsoft.Json.Linq.JObject.Parse(line));
+                }
+                catch
+                {
+                    // skip malformed lines
+                }
+            }
+
+            return new SuccessResponse($"{events.Count} event(s)", events);
         }
 
         static string ResolveOutputPrefix(string userPrefix)

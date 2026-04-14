@@ -387,7 +387,8 @@ UI (UIToolkit):
   ui tree                             Print element tree as text
   ui tree --depth 3                   Limit depth
   ui query "type=Button"              Find element by selector
-  ui click "id=save-btn"              Click element by selector
+  ui click "id=save-btn"              Click element (returns before/after diff)
+  ui events                           Read pending UI change events
 
 Async Jobs:
   job <job_id>                  Poll and wait for async job result
@@ -662,6 +663,12 @@ Subcommands:
   query <selector>             Find element matching selector
     --window <name>            Target window
   click <selector>             Click element matching selector
+                               Returns before/after diff automatically.
+    --window <name>            Target window
+  events                       Read and clear pending UI change events.
+                               Unity monitors UIDocument additions/removals
+                               in play mode and writes events to a status file.
+                               Returns JSON array of events, empty if none.
 
 Selectors:
   label=Save                   Exact text match
@@ -680,6 +687,7 @@ Examples:
   unity-cli ui query "label=Save type=Button"
   unity-cli ui click "id=save-btn"
   unity-cli ui click "type=Button [0]"
+  unity-cli ui events
 `)
 	case "list":
 		fmt.Print(`Usage: unity-cli list

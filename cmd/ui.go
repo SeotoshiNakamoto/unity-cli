@@ -51,8 +51,11 @@ func uiCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 		params["selector"] = selector
 		setStr(flags, params, "window", "window")
 
+	case "events":
+		// no extra params
+
 	default:
-		return nil, fmt.Errorf("unknown ui action: %s\nAvailable: snapshot, tree, query, click", action)
+		return nil, fmt.Errorf("unknown ui action: %s\nAvailable: snapshot, tree, query, click, events", action)
 	}
 
 	return send("ui_snapshot", params)
