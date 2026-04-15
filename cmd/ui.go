@@ -30,10 +30,16 @@ func uiCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 		if _, ok := flags["no-screenshot"]; ok {
 			params["screenshot"] = false
 		}
+		if _, ok := flags["interactive"]; ok {
+			params["interactive"] = true
+		}
 
 	case "tree":
 		setStr(flags, params, "window", "window")
 		setInt(flags, params, "depth", "max_depth")
+		if _, ok := flags["interactive"]; ok {
+			params["interactive"] = true
+		}
 
 	case "query":
 		selector := extractPositional(rest)

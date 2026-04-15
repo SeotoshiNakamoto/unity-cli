@@ -47,6 +47,14 @@ namespace UnityCliConnector.UIToolkit
     {
         const int HardCap = 500;
 
+        // Types considered "interactive" — actionable or readable by an LLM agent
+        static readonly HashSet<string> InteractiveTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "Button", "RepeatButton", "Toggle", "TextField", "Slider", "SliderInt",
+            "MinMaxSlider", "DropdownField", "PopupField", "EnumField", "RadioButton",
+            "RadioButtonGroup", "Foldout", "ScrollView", "ListView", "Label",
+        };
+
         internal static TraversalResult Traverse(
             VisualElement root,
             string windowTitle,
@@ -55,7 +63,8 @@ namespace UnityCliConnector.UIToolkit
             bool isRuntime,
             int maxDepth,
             bool visibleOnly,
-            string textFilter)
+            string textFilter,
+            bool interactiveOnly = false)
         {
             var elements = new List<ElementData>();
             int totalCount = 0;
@@ -65,7 +74,7 @@ namespace UnityCliConnector.UIToolkit
 
             TraverseRecursive(
                 root, windowTitle, windowRect, isRuntime, ppp,
-                "", maxDepth, 0, visibleOnly, textFilter,
+                "", maxDepth, 0, visibleOnly, textFilter, interactiveOnly,
                 elements, ref totalCount, ref truncated);
 
             return new TraversalResult
@@ -87,6 +96,7 @@ namespace UnityCliConnector.UIToolkit
             int currentDepth,
             bool visibleOnly,
             string textFilter,
+            bool interactiveOnly,
             List<ElementData> elements,
             ref int totalCount,
             ref bool truncated)
@@ -101,6 +111,15 @@ namespace UnityCliConnector.UIToolkit
             string label = ExtractLabel(element);
             string typeName = element.GetType().Name;
 
+            // Interactive filter — skip non-interactive but still traverse children
+            if (interactiveOnly && !InteractiveTypes.Contains(typeName))
+            {
+                TraverseChildren(element, windowTitle, windowRect, isRuntime, pixelsPerPoint,
+                    path, maxDepth, currentDepth, visibleOnly, textFilter, interactiveOnly,
+                    elements, ref totalCount, ref truncated);
+                return;
+            }
+
             // Text filter
             if (!string.IsNullOrEmpty(textFilter))
             {
@@ -112,7 +131,8 @@ namespace UnityCliConnector.UIToolkit
                 {
                     // Still traverse children — a child might match
                     TraverseChildren(element, windowTitle, windowRect, isRuntime, pixelsPerPoint,
-                        path, maxDepth, currentDepth, visibleOnly, textFilter, elements, ref totalCount, ref truncated);
+                        path, maxDepth, currentDepth, visibleOnly, textFilter, interactiveOnly,
+                        elements, ref totalCount, ref truncated);
                     return;
                 }
             }
@@ -142,7 +162,8 @@ namespace UnityCliConnector.UIToolkit
             });
 
             TraverseChildren(element, windowTitle, windowRect, isRuntime, pixelsPerPoint,
-                path, maxDepth, currentDepth, visibleOnly, textFilter, elements, ref totalCount, ref truncated);
+                path, maxDepth, currentDepth, visibleOnly, textFilter, interactiveOnly,
+                elements, ref totalCount, ref truncated);
         }
 
         static void TraverseChildren(
@@ -156,6 +177,7 @@ namespace UnityCliConnector.UIToolkit
             int currentDepth,
             bool visibleOnly,
             string textFilter,
+            bool interactiveOnly,
             List<ElementData> elements,
             ref int totalCount,
             ref bool truncated)
@@ -167,27 +189,34 @@ namespace UnityCliConnector.UIToolkit
                 if (truncated) return;
                 TraverseRecursive(
                     element[i], windowTitle, windowRect, isRuntime, pixelsPerPoint,
-                    path, maxDepth, currentDepth + 1, visibleOnly, textFilter,
+                    path, maxDepth, currentDepth + 1, visibleOnly, textFilter, interactiveOnly,
                     elements, ref totalCount, ref truncated);
             }
         }
 
-        internal static void BuildTreeText(VisualElement element, StringBuilder sb, int maxDepth, int indent)
+        internal static void BuildTreeText(VisualElement element, StringBuilder sb, int maxDepth, int indent,
+            bool interactiveOnly = false)
         {
-            string prefix = new string(' ', indent * 2);
             string typeName = element.GetType().Name;
-            string name = !string.IsNullOrEmpty(element.name) ? $" id:{element.name}" : "";
-            string label = ExtractLabel(element);
-            string labelStr = !string.IsNullOrEmpty(label) ? $" \"{label}\"" : "";
-            bool visible = IsVisible(element);
-            string visStr = visible ? "" : " [hidden]";
 
-            sb.AppendLine($"{prefix}[{typeName}]{name}{labelStr}{visStr}");
+            // Interactive filter — skip this element but still recurse children
+            bool isInteractive = InteractiveTypes.Contains(typeName);
+            if (!interactiveOnly || isInteractive)
+            {
+                string prefix = new string(' ', indent * 2);
+                string name = !string.IsNullOrEmpty(element.name) ? $" id:{element.name}" : "";
+                string label = ExtractLabel(element);
+                string labelStr = !string.IsNullOrEmpty(label) ? $" \"{label}\"" : "";
+                bool visible = IsVisible(element);
+                string visStr = visible ? "" : " [hidden]";
+
+                sb.AppendLine($"{prefix}[{typeName}]{name}{labelStr}{visStr}");
+            }
 
             if (maxDepth > 0 && indent >= maxDepth) return;
 
             for (int i = 0; i < element.childCount; i++)
-                BuildTreeText(element[i], sb, maxDepth, indent + 1);
+                BuildTreeText(element[i], sb, maxDepth, indent + 1, interactiveOnly);
         }
 
         static bool IsVisible(VisualElement element)

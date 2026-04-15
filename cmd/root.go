@@ -383,9 +383,11 @@ UI (UIToolkit):
   ui snapshot                         Capture UI element tree as JSON + screenshot
   ui snapshot --window Inspector      Target specific window
   ui snapshot --visible-only          Only visible elements
+  ui snapshot --interactive           Buttons, fields, labels only
   ui snapshot --depth 3               Limit tree depth
   ui tree                             Print element tree as text
   ui tree --depth 3                   Limit depth
+  ui tree --interactive               Buttons, fields, labels only
   ui query "type=Button"              Find element by selector
   ui click "id=save-btn"              Click element (returns before/after diff)
   ui type "id=input" "text"           Type text into field (returns diff)
@@ -657,10 +659,12 @@ Subcommands:
     --depth <N>                Limit tree depth (0=unlimited, default: 0)
     --filter <text>            Filter elements by text substring
     --visible-only             Only include visible elements
+    --interactive              Only Buttons, TextFields, Labels, Toggles, etc.
     --no-screenshot            Skip screenshot, JSON only
   tree                         Print element tree as indented text
     --window <name>            Target window
     --depth <N>                Limit depth (0=unlimited, default: 0)
+    --interactive              Only interactive/readable elements
   query <selector>             Find element matching selector
     --window <name>            Target window
   click <selector>             Click element matching selector

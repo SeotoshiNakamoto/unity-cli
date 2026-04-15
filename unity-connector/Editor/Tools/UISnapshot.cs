@@ -31,6 +31,9 @@ namespace UnityCliConnector.Tools
 
             [ToolParameter("Include screenshot (default true)", Required = false)]
             public bool Screenshot { get; set; }
+
+            [ToolParameter("Only include interactive/readable elements: Button, TextField, Toggle, Label, etc. (default false)", Required = false)]
+            public bool Interactive { get; set; }
         }
 
         public static object HandleCommand(JObject @params)
@@ -66,6 +69,7 @@ namespace UnityCliConnector.Tools
 
             var maxDepth = p.GetInt("max_depth", 0).Value;
             var visibleOnly = p.GetBool("visible_only", false);
+            var interactiveOnly = p.GetBool("interactive", false);
             var filter = p.Get("filter");
             var outputPrefix = p.Get("output");
             var includeScreenshot = p.GetBool("screenshot", true);
@@ -80,7 +84,7 @@ namespace UnityCliConnector.Tools
                 var result = VisualElementTraverser.Traverse(
                     panel.Root, panel.WindowTitle, panel.WindowType,
                     panel.WindowRect, panel.IsRuntime,
-                    maxDepth, visibleOnly, filter);
+                    maxDepth, visibleOnly, filter, interactiveOnly);
 
                 totalCount += result.TotalCount;
                 truncated = truncated || result.Truncated;
@@ -157,12 +161,13 @@ namespace UnityCliConnector.Tools
                     : $"No panels matching '{windowFilter}' found.");
 
             var maxDepth = p.GetInt("max_depth", 0).Value;
+            var interactiveOnly = p.GetBool("interactive", false);
 
             var sb = new System.Text.StringBuilder();
             foreach (var panel in panels)
             {
                 sb.AppendLine($"[{panel.WindowType}] {panel.WindowTitle}");
-                VisualElementTraverser.BuildTreeText(panel.Root, sb, maxDepth, indent: 1);
+                VisualElementTraverser.BuildTreeText(panel.Root, sb, maxDepth, indent: 1, interactiveOnly: interactiveOnly);
                 sb.AppendLine();
             }
 

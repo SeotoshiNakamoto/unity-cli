@@ -80,7 +80,7 @@ func primeCmd(project string, port int) error {
 	sb.WriteString("- 시각적 확인이 필요하면 `screenshot --output_path d:/tmp/screenshot.png` 사용. 항상 같은 경로에 덮어쓰고 Read 도구로 읽을 것.\n")
 	sb.WriteString("- 특정 에디터 창만 캡처: `screenshot --view window --window_type InspectorWindow --output_path d:/tmp/screenshot.png`. 열린 창 목록은 `screenshot --action list_windows`로 확인.\n")
 	sb.WriteString("- 수치 확인은 `exec`가 더 빠르고 정확함. screenshot은 눈으로 봐야 할 때만.\n")
-	sb.WriteString("- UI 탐색 (play mode): `ui tree`로 UIToolkit 트리 확인, `ui query \"type=Button\"`로 요소 검색, `ui snapshot`은 JSON+스크린샷 동시 캡처.\n")
+	sb.WriteString("- UI 탐색 (play mode): `ui tree`로 트리 확인, `--interactive` 추가 시 Button/TextField/Label만 표시 (레이아웃 노이즈 제거). `ui query \"type=Button\"`로 요소 검색, `ui snapshot`은 JSON+스크린샷.\n")
 	sb.WriteString("- UI 클릭: `ui click \"id=save-btn\"` — 클릭 후 diff를 자동 반환. diff에 added/removed/changed 포함되어 별도 snapshot 불필요.\n")
 	sb.WriteString("- UI 텍스트 입력: `ui type \"id=input-name\" \"PlayerOne\"` — TextField에 텍스트 입력 + diff 반환. ChangeEvent 자동 발행.\n")
 	sb.WriteString("- 화면 전환 감지 (play mode): `ui events`로 UIDocument 추가/제거 이벤트 확인. 로딩 완료, 새 UI 등장 등 비동기 전환 감지. 호출 시 이벤트 큐를 읽고 비움.\n")
