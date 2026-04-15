@@ -384,10 +384,12 @@ UI (UIToolkit):
   ui snapshot --window Inspector      Target specific window
   ui snapshot --visible-only          Only visible elements
   ui snapshot --interactive           Buttons, fields, labels only
+  ui snapshot --runtime               Game UI only (UIDocument, exclude editor windows)
   ui snapshot --depth 3               Limit tree depth
   ui tree                             Print element tree as text
   ui tree --depth 3                   Limit depth
   ui tree --interactive               Buttons, fields, labels only
+  ui tree --runtime                   Game UI only (recommended for play mode QA)
   ui query "type=Button"              Find element by selector
   ui click "id=save-btn"              Click element (returns before/after diff)
   ui type "id=input" "text"           Type text into field (returns diff)
@@ -660,20 +662,26 @@ Subcommands:
     --filter <text>            Filter elements by text substring
     --visible-only             Only include visible elements
     --interactive              Only Buttons, TextFields, Labels, Toggles, etc.
+    --runtime                  Game UI only (UIDocument). Recommended for play mode QA.
+    --editor                   Editor windows only (Inspector, GameView, etc.)
     --no-screenshot            Skip screenshot, JSON only
   tree                         Print element tree as indented text
     --window <name>            Target window
     --depth <N>                Limit depth (0=unlimited, default: 0)
     --interactive              Only interactive/readable elements
+    --runtime                  Game UI only (UIDocument)
+    --editor                   Editor windows only
   query <selector>             Find element matching selector
     --window <name>            Target window
   click <selector>             Click element matching selector
                                Returns before/after diff automatically.
     --window <name>            Target window
+    --runtime / --editor       Limit search scope (game UI vs editor windows)
   type <selector> <text>       Type text into a TextField
                                Sets value and dispatches ChangeEvent.
                                Returns before/after diff automatically.
     --window <name>            Target window
+    --runtime / --editor       Limit search scope
   events                       Read and clear pending UI change events.
                                Unity monitors UIDocument additions/removals
                                in play mode and writes events to a status file.
@@ -697,6 +705,8 @@ Examples:
   unity-cli ui click "id=save-btn"
   unity-cli ui click "type=Button [0]"
   unity-cli ui type "id=input-name" "PlayerOne"
+  unity-cli ui tree --runtime --interactive
+  unity-cli ui click --runtime "id=btn-create-room"
   unity-cli ui events
 
 Click diff output format:

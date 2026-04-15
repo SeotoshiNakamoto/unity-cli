@@ -17,13 +17,22 @@ namespace UnityCliConnector.UIToolkit
         public bool IsRuntime;
     }
 
+    internal enum PanelSource
+    {
+        All,
+        Runtime,  // UIDocument only (game UI)
+        Editor,   // EditorWindow only (Inspector, GameView, custom tools, etc.)
+    }
+
     internal static class PanelDiscovery
     {
-        internal static List<PanelInfo> FindPanels(string windowFilter = null)
+        internal static List<PanelInfo> FindPanels(string windowFilter = null, PanelSource source = PanelSource.All)
         {
             var panels = new List<PanelInfo>();
 
             // Editor windows
+            if (source == PanelSource.All || source == PanelSource.Editor)
+            {
             var focusedWindow = EditorWindow.focusedWindow;
             var allWindows = Resources.FindObjectsOfTypeAll<EditorWindow>();
 
@@ -54,9 +63,10 @@ namespace UnityCliConnector.UIToolkit
                     IsRuntime = false,
                 });
             }
+            } // end Editor block
 
             // Runtime UIDocuments (play mode only)
-            if (EditorApplication.isPlaying)
+            if ((source == PanelSource.All || source == PanelSource.Runtime) && EditorApplication.isPlaying)
             {
                 var documents =
 #if UNITY_2023_1_OR_NEWER

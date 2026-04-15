@@ -18,6 +18,13 @@ func uiCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 
 	params := map[string]interface{}{"action": action}
 
+	// --runtime / --editor source filter (applies to snapshot, tree, query, click, type)
+	if _, ok := flags["runtime"]; ok {
+		params["source"] = "runtime"
+	} else if _, ok := flags["editor"]; ok {
+		params["source"] = "editor"
+	}
+
 	switch action {
 	case "snapshot":
 		setStr(flags, params, "window", "window")

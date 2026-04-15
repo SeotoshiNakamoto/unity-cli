@@ -34,6 +34,20 @@ namespace UnityCliConnector.Tools
 
             [ToolParameter("Only include interactive/readable elements: Button, TextField, Toggle, Label, etc. (default false)", Required = false)]
             public bool Interactive { get; set; }
+
+            [ToolParameter("Panel source: all (default), runtime (UIDocument only — game UI), editor (EditorWindow only)", Required = false)]
+            public string Source { get; set; }
+        }
+
+        static UIToolkit.PanelSource ParseSource(ToolParams p)
+        {
+            var src = p.Get("source", "all").ToLowerInvariant();
+            switch (src)
+            {
+                case "runtime": return UIToolkit.PanelSource.Runtime;
+                case "editor":  return UIToolkit.PanelSource.Editor;
+                default:        return UIToolkit.PanelSource.All;
+            }
         }
 
         public static object HandleCommand(JObject @params)
@@ -60,7 +74,7 @@ namespace UnityCliConnector.Tools
         static object DoSnapshot(ToolParams p)
         {
             var windowFilter = p.Get("window");
-            var panels = PanelDiscovery.FindPanels(windowFilter);
+            var panels = PanelDiscovery.FindPanels(windowFilter, ParseSource(p));
 
             if (panels.Count == 0)
                 return new ErrorResponse(string.IsNullOrEmpty(windowFilter)
@@ -153,7 +167,7 @@ namespace UnityCliConnector.Tools
         static object DoTree(ToolParams p)
         {
             var windowFilter = p.Get("window");
-            var panels = PanelDiscovery.FindPanels(windowFilter);
+            var panels = PanelDiscovery.FindPanels(windowFilter, ParseSource(p));
 
             if (panels.Count == 0)
                 return new ErrorResponse(string.IsNullOrEmpty(windowFilter)
@@ -182,7 +196,7 @@ namespace UnityCliConnector.Tools
 
             var query = SelectorParser.Parse(selectorStr);
             var windowFilter = p.Get("window");
-            var panels = PanelDiscovery.FindPanels(windowFilter);
+            var panels = PanelDiscovery.FindPanels(windowFilter, ParseSource(p));
 
             foreach (var panel in panels)
             {
@@ -212,10 +226,11 @@ namespace UnityCliConnector.Tools
 
             var query = SelectorParser.Parse(selectorStr);
             var windowFilter = p.Get("window");
-            var panels = PanelDiscovery.FindPanels(windowFilter);
+            var source = ParseSource(p);
+            var panels = PanelDiscovery.FindPanels(windowFilter, source);
 
-            // Pre-click snapshot for diff
-            var allPanels = PanelDiscovery.FindPanels(null);
+            // Pre-click snapshot for diff (same source scope as the click target)
+            var allPanels = PanelDiscovery.FindPanels(null, source);
             var before = TreeDiff.SnapshotLite(allPanels);
 
             foreach (var panel in panels)
@@ -238,7 +253,7 @@ namespace UnityCliConnector.Tools
                     var clickResult = ClickExecutor.Execute(target.SourceElement);
 
                     // Post-click snapshot + diff (synchronous — handler already executed)
-                    var afterPanels = PanelDiscovery.FindPanels(null);
+                    var afterPanels = PanelDiscovery.FindPanels(null, source);
                     var after = TreeDiff.SnapshotLite(afterPanels);
                     var diff = TreeDiff.ComputeDiff(before, after);
 
@@ -273,9 +288,10 @@ namespace UnityCliConnector.Tools
 
             var query = SelectorParser.Parse(selectorStr);
             var windowFilter = p.Get("window");
-            var panels = PanelDiscovery.FindPanels(windowFilter);
+            var source = ParseSource(p);
+            var panels = PanelDiscovery.FindPanels(windowFilter, source);
 
-            var allPanels = PanelDiscovery.FindPanels(null);
+            var allPanels = PanelDiscovery.FindPanels(null, source);
             var before = TreeDiff.SnapshotLite(allPanels);
 
             foreach (var panel in panels)
@@ -312,7 +328,7 @@ namespace UnityCliConnector.Tools
                             $"Element '{target.Id}' is {target.TypeName}, not a text field.");
                     }
 
-                    var afterPanels = PanelDiscovery.FindPanels(null);
+                    var afterPanels = PanelDiscovery.FindPanels(null, source);
                     var after = TreeDiff.SnapshotLite(afterPanels);
                     var diff = TreeDiff.ComputeDiff(before, after);
 
