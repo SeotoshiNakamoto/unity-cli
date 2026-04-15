@@ -56,9 +56,15 @@ CI skips these since Unity is not available.
 
 ### 변경 시
 
-CLI option, command, parameter를 수정하면 관련된 모든 곳을 함께 반영한다:
+CLI option, command, parameter를 수정하면 관련된 **모든** 곳을 함께 반영한다.
+한 곳이라도 빠지면 LLM 에이전트가 기능을 모르거나 잘못 쓴다:
+
 - C# tool (Parameters class, HandleCommand)
-- Go help text (root.go의 overview + command별 detailed help)
+- Go help text — 3곳 전부:
+  - `root.go` printHelp() overview 섹션
+  - `root.go` printTopicHelp() detailed help
+  - 에러 메시지 (ui.go 등의 usage/Available 문자열)
+- `prime.go` 팁 섹션 — LLM 에이전트가 처음 읽는 지침. 새 명령/옵션/동작 변경 시 반드시 반영
 - README.md, README.ko.md
 
 ### 버전 관리
