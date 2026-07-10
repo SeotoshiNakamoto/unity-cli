@@ -307,3 +307,82 @@ func TestDiscoverInstance_ProjectPathMatchesSlashVariants(t *testing.T) {
 		t.Errorf("ProjectPath: got %q, want %q", got.ProjectPath, "E:/GamerAworlD")
 	}
 }
+
+func TestDiscoverInstance_ExactPathDoesNotSelectClonePrefix(t *testing.T) {
+	stubIsProcessDead(t, map[int]bool{})
+
+	home := writeInstanceFiles(t, map[string]Instance{
+		"main.json": {
+			State:       "ready",
+			ProjectPath: "D:/Projects/ProjectD_Track2/client",
+			Port:        8091,
+			PID:         100,
+			Timestamp:   1000,
+		},
+		"clone.json": {
+			State:       "ready",
+			ProjectPath: "D:/Projects/ProjectD_Track2/client_clone_0",
+			Port:        8094,
+			PID:         200,
+			Timestamp:   2000,
+		},
+	})
+	t.Setenv("HOME", home)
+
+	got, err := DiscoverInstance("D:/Projects/ProjectD_Track2/client", 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Port != 8091 {
+		t.Fatalf("Port: got %d, want 8091", got.Port)
+	}
+}
+
+func TestFindByProject_UniqueDirectoryNameFallback(t *testing.T) {
+	stubIsProcessDead(t, map[int]bool{})
+
+	home := writeInstanceFiles(t, map[string]Instance{
+		"project.json": {
+			State:       "ready",
+			ProjectPath: "/projects/ProjectD/client_clone_0",
+			Port:        8094,
+			PID:         200,
+			Timestamp:   2000,
+		},
+	})
+	t.Setenv("HOME", home)
+
+	got, err := FindByProject("client_clone_0")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Port != 8094 {
+		t.Fatalf("Port: got %d, want 8094", got.Port)
+	}
+}
+
+func TestFindByProject_AmbiguousDirectoryNameFails(t *testing.T) {
+	stubIsProcessDead(t, map[int]bool{})
+
+	home := writeInstanceFiles(t, map[string]Instance{
+		"one.json": {
+			State:       "ready",
+			ProjectPath: "/projects/one/client",
+			Port:        8091,
+			PID:         100,
+			Timestamp:   1000,
+		},
+		"two.json": {
+			State:       "ready",
+			ProjectPath: "/projects/two/client",
+			Port:        8092,
+			PID:         200,
+			Timestamp:   2000,
+		},
+	})
+	t.Setenv("HOME", home)
+
+	if _, err := FindByProject("client"); err == nil {
+		t.Fatal("expected ambiguous selector error")
+	}
+}

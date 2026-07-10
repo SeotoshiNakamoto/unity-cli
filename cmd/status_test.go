@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/youngwoocho02/unity-cli/internal/client"
 )
@@ -82,5 +83,35 @@ func TestReadStatus_InvalidJSON(t *testing.T) {
 	_, err := readStatus(8090)
 	if err == nil {
 		t.Error("expected error for invalid JSON")
+	}
+}
+
+func TestWaitForAlive_FollowsProjectToNewPort(t *testing.T) {
+	project := filepath.Join(t.TempDir(), "Game")
+	want := client.Instance{
+		State:       "ready",
+		ProjectPath: project,
+		Port:        8096,
+		PID:         os.Getpid(),
+		Timestamp:   time.Now().UnixMilli(),
+	}
+
+	home := writeInstanceFile(t, want)
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	staleSelection := &client.Instance{
+		State:       "reloading",
+		ProjectPath: project,
+		Port:        8094,
+		PID:         os.Getpid(),
+		Timestamp:   time.Now().Add(-time.Minute).UnixMilli(),
+	}
+	got, err := waitForAlive(staleSelection, project, 0, 1000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Port != 8096 {
+		t.Fatalf("Port: got %d, want 8096", got.Port)
 	}
 }

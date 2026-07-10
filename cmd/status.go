@@ -37,14 +37,11 @@ func readActiveStatus(port int) (*client.Instance, error) {
 	return client.FindActiveByPort(port)
 }
 
-// unityGone checks if the Unity process is confirmed dead by looking at the
-// heartbeat staleness and OS process status. A stale heartbeat alone is not
-// enough (domain reloads can stall for 30+ seconds), so we require both
-// conditions: heartbeat older than 30s AND the process no longer exists.
-func unityGone(port int) bool {
-	status, err := readStatus(port)
-	if err != nil {
-		return false // no file — can't confirm
+// unityGone checks if the Unity process is confirmed dead. A stale heartbeat
+// alone is not enough because domain reloads can stall for 30+ seconds.
+func unityGone(status *client.Instance) bool {
+	if status == nil {
+		return false
 	}
 	age := time.Since(time.UnixMilli(status.Timestamp))
 	if age < 30*time.Second {
@@ -53,16 +50,24 @@ func unityGone(port int) bool {
 	return status.PID > 0 && client.IsProcessDead(status.PID)
 }
 
-// waitForAlive reads the current timestamp, then polls until a newer one appears.
-func waitForAlive(port int, timeoutMs int) error {
-	baseline := time.Now().UnixMilli()
-	if status, err := readActiveStatus(port); err == nil {
-		baseline = status.Timestamp
+// waitForAlive follows the selected project across connector port changes.
+// Domain reload can temporarily bind the same Editor to a new port, so a fixed
+// port is used only when the caller explicitly supplied --port.
+func waitForAlive(inst *client.Instance, project string, explicitPort int, timeoutMs int) (*client.Instance, error) {
+	selector := project
+	if selector == "" && inst != nil {
+		selector = inst.ProjectPath
 	}
 
-	// Already fresh — check if timestamp was updated within the last second
-	if time.Now().UnixMilli()-baseline < 1000 {
-		return nil
+	resolve := func() (*client.Instance, error) {
+		if explicitPort > 0 {
+			return readActiveStatus(explicitPort)
+		}
+		return client.FindByProject(selector)
+	}
+
+	if current, err := resolve(); err == nil && time.Now().UnixMilli()-current.Timestamp < 1000 {
+		return current, nil
 	}
 
 	fmt.Fprintf(os.Stderr, "Waiting for Unity...\n")
@@ -70,37 +75,45 @@ func waitForAlive(port int, timeoutMs int) error {
 	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
 	for time.Now().Before(deadline) {
 		time.Sleep(500 * time.Millisecond)
-		if unityGone(port) {
-			return fmt.Errorf("unity process exited (port %d)", port)
-		}
-		status, err := readActiveStatus(port)
+		status, err := resolve()
 		if err != nil {
 			continue
 		}
-		if status.Timestamp > baseline {
+		if unityGone(status) {
+			return nil, fmt.Errorf("unity process exited (pid %d)", status.PID)
+		}
+		if time.Now().UnixMilli()-status.Timestamp < 1500 {
 			fmt.Fprintf(os.Stderr, "Unity is ready.\n")
-			return nil
+			return status, nil
 		}
 	}
 
-	return fmt.Errorf("timed out waiting for Unity (port %d)", port)
+	return nil, fmt.Errorf("timed out waiting for Unity project %q", selector)
 }
 
 // waitForReady polls until the heartbeat state becomes "ready".
 // Returns true if compilation had errors.
-func waitForReady(port int) bool {
+func waitForReady(port int, project string, explicitPort int) bool {
 	fmt.Fprintf(os.Stderr, "Waiting for compilation...\n")
 
 	deadline := time.Now().Add(5 * time.Minute)
 	for time.Now().Before(deadline) {
 		time.Sleep(500 * time.Millisecond)
-		if unityGone(port) {
-			fmt.Fprintf(os.Stderr, "Unity process exited during compilation.\n")
-			return true
+		var (
+			status *client.Instance
+			err    error
+		)
+		if explicitPort > 0 {
+			status, err = readActiveStatus(port)
+		} else {
+			status, err = client.FindByProject(project)
 		}
-		status, err := readActiveStatus(port)
 		if err != nil {
 			continue
+		}
+		if unityGone(status) {
+			fmt.Fprintf(os.Stderr, "Unity process exited during compilation.\n")
+			return true
 		}
 		if status.State == "ready" {
 			if status.CompileErrors {

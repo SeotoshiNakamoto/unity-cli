@@ -71,6 +71,8 @@ func Execute() error {
 		statusErr := statusCmd(inst)
 		printUpdateNotice()
 		return statusErr
+	case "instances":
+		return instancesCmd(subArgs, flagProject, flagPort, flagTimeout)
 	case "prime":
 		return primeCmd(flagProject, flagPort)
 	}
@@ -80,7 +82,8 @@ func Execute() error {
 		return err
 	}
 
-	if err := waitForAlive(inst.Port, flagTimeout); err != nil {
+	inst, err = waitForAlive(inst, flagProject, flagPort, flagTimeout)
+	if err != nil {
 		return err
 	}
 
@@ -93,7 +96,7 @@ func Execute() error {
 
 	switch category {
 	case "editor":
-		resp, err = editorCmd(subArgs, send, inst.Port)
+		resp, err = editorCmd(subArgs, send, inst.Port, inst.ProjectPath, flagPort)
 	case "test":
 		testSend := func(command string, params interface{}) (*client.CommandResponse, error) {
 			return client.Send(inst, command, params, 600000) // 10 min — EditMode tests can be long
@@ -116,6 +119,8 @@ func Execute() error {
 		resp, err = uiCmd(subArgs, send)
 	case "job":
 		resp, err = jobCmd(subArgs, send)
+	case "parrelsync":
+		resp, err = parrelSyncCmd(subArgs, send)
 	default:
 		var params map[string]interface{}
 		params, err = buildParams(subArgs, nil)
@@ -308,8 +313,17 @@ Editor Control:
   editor play [--wait]          Enter play mode (--wait blocks until fully entered)
   editor stop                   Exit play mode
   editor pause                  Toggle pause/resume (play mode only)
+  editor quit                   Gracefully close the selected Unity Editor
   editor refresh                Refresh asset database
   editor refresh --compile      Recompile scripts and wait until done
+
+Multiple Instances:
+  instances list [--json]       List live Unity Editors with project, port, and PID
+  instances wait --project P    Wait for a project heartbeat (--state ready by default)
+  instances kill --project P --force  Force-kill one explicitly selected Editor
+  parrelsync list               List ParrelSync clones from the main Editor
+  parrelsync ensure --count 2 --open  Create missing clones and open them
+  parrelsync open --all         Open every existing ParrelSync clone
 
 Console:
   console                       Read error & warning logs (default)
@@ -406,6 +420,7 @@ Custom Tools:
 
 Status:
   status                        Show Unity Editor state (ready, compiling, etc.)
+  instances list                Show every registered Unity Editor instance
 
 Update:
   update                        Update to the latest version
@@ -420,7 +435,8 @@ Use "unity-cli <command> --help" for more information about a command.
 
 Notes:
   - Unity must be open with the Connector package installed
-  - Multiple Unity instances: use --port or --project to select
+  - Multiple Unity instances: use exact --project paths; inspect with 'instances list'
+  - 'instances kill' is destructive and requires both an explicit selector and --force
   - Custom tools: any [UnityCliTool] class is auto-discovered
   - Run 'list' to see all available tools
 `)
@@ -429,7 +445,7 @@ Notes:
 func printTopicHelp(topic string) {
 	switch topic {
 	case "editor":
-		fmt.Print(`Usage: unity-cli editor <play|stop|pause|refresh> [options]
+		fmt.Print(`Usage: unity-cli editor <play|stop|pause|quit|refresh> [options]
 
 Subcommands:
   play [--wait]       Enter play mode
@@ -437,13 +453,64 @@ Subcommands:
                       Without --wait, returns immediately after requesting.
   stop                Exit play mode. No effect if not playing.
   pause               Toggle pause. Only works during play mode.
+  quit                Gracefully close the selected Unity Editor process.
   refresh             Refresh AssetDatabase (reimport changed assets).
     --compile         Recompile scripts and wait until compilation finishes.
 
 Examples:
   unity-cli editor play --wait
   unity-cli editor stop
+  unity-cli --project D:/Projects/Game/client_clone_0 editor quit
   unity-cli editor refresh --compile
+`)
+	case "instances":
+		fmt.Print(`Usage: unity-cli instances <list|wait|kill> [options]
+
+Manage and observe all Unity Editor processes registered by the connector.
+
+Subcommands:
+  list                List active instances with state, port, PID, and project.
+    --json            Print machine-readable JSON.
+    --all             Include stopped heartbeat entries.
+  wait                Wait for an explicitly selected instance.
+    --project <path>  Select by canonical project path (global option).
+    --port <N>        Select by connector port (global option).
+    --state <state>   Desired heartbeat state (default: ready; use any for any live state).
+    --timeout <ms>    Wait timeout (global option, default: 120000).
+  kill                Force-terminate an explicitly selected Unity process.
+    --project/--port  Required explicit target selector.
+    --force           Required safety confirmation.
+
+Examples:
+  unity-cli instances list --json
+  unity-cli --project D:/Projects/Game/client_clone_0 instances wait --state ready
+  unity-cli --project D:/Projects/Game/client instances kill --force
+
+Use 'editor quit' for normal cleanup. Use 'instances kill --force' only for
+crash simulation or an unresponsive Editor; it bypasses Unity shutdown hooks.
+`)
+	case "parrelsync":
+		fmt.Print(`Usage: unity-cli parrelsync <list|ensure|open> [options]
+
+Manage ParrelSync clones through the selected main Unity Editor. The connector
+uses reflection, so projects without ParrelSync still compile and return a clear error.
+
+Subcommands:
+  list                List clone paths and running state.
+  ensure              Create clones until the requested count exists.
+    --count <N>       Desired clone count (default: 1).
+    --open            Open ensured clones after creation.
+  open                Open an existing clone.
+    --index <N>       Clone index to open (default: 0).
+    --all             Open every existing clone.
+
+Examples:
+  unity-cli --project D:/Projects/Game/client parrelsync list
+  unity-cli --project D:/Projects/Game/client parrelsync ensure --count 2 --open
+  unity-cli --project D:/Projects/Game/client parrelsync open --all
+
+Run these commands against the original project, not a clone. First-time clone
+creation can take several minutes; add --timeout or --async when appropriate.
 `)
 	case "console":
 		fmt.Print(`Usage: unity-cli console [options]

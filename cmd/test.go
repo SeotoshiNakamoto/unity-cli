@@ -104,7 +104,7 @@ func pollTestResults(port int) (*client.CommandResponse, error) {
 		if err == nil && inst.State == "stopped" {
 			return nil, fmt.Errorf("unity editor has stopped (port %d)", port)
 		}
-		if unityGone(port) {
+		if unityGone(inst) {
 			return nil, fmt.Errorf("unity process exited (port %d)", port)
 		}
 	}

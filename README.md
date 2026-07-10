@@ -143,7 +143,9 @@ Before compiling or reloading, the Connector records the state (`compiling`, `re
 
 | Command | Description |
 |---------|-------------|
-| `editor` | Play/stop/pause/refresh the Unity Editor |
+| `editor` | Play/stop/pause/quit/refresh the Unity Editor |
+| `instances` | List, wait for, or force-kill an explicitly selected Editor |
+| `parrelsync` | List, create, and open ParrelSync clones |
 | `console` | Read, filter, and clear console logs |
 | `exec` | Run arbitrary C# code inside Unity |
 | `test` | Run EditMode/PlayMode tests |
@@ -169,6 +171,9 @@ unity-cli editor stop
 
 # Toggle pause (only works during play mode)
 unity-cli editor pause
+
+# Gracefully close the selected Editor
+unity-cli --project D:/Projects/Game/client_clone_0 editor quit
 
 # Refresh assets
 unity-cli editor refresh
@@ -368,15 +373,15 @@ The CLI also checks Unity's state automatically before sending any command. If U
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--port <N>` | Override Unity instance port (skip auto-discovery) | auto |
-| `--project <path>` | Select Unity instance by project path | latest |
+| `--project <path>` | Select by exact canonical path, or an unambiguous name/suffix | latest |
 | `--timeout <ms>` | HTTP request timeout | 120000 |
 
 ```bash
 # Connect to a specific Unity instance
 unity-cli --port 8091 editor play
 
-# Select by project path when multiple Unity instances are open
-unity-cli --project MyGame editor stop
+# Select by canonical project path when multiple Unity instances are open
+unity-cli --project D:/Projects/MyGame editor stop
 ```
 
 Use `--help` on any command for detailed usage:
@@ -477,17 +482,44 @@ unity-cli spawn --params '{"x":1,"y":0,"z":5,"prefab":"Goblin"}'
 When multiple Unity Editors are open, each registers on a different port (8090, 8091, ...):
 
 ```bash
-# See all running instances
-ls ~/.unity-cli/instances/
+# See all running instances with machine-readable identity
+unity-cli instances list --json
 
-# Select by project path
-unity-cli --project MyGame editor play
+# Select by exact project path
+unity-cli --project D:/Projects/MyGame editor play
 
 # Select by port
 unity-cli --port 8091 editor play
 
 # Default: uses the most recently registered instance
 unity-cli editor play
+
+# Wait until a clone is ready
+unity-cli --project D:/Projects/MyGame_clone_0 instances wait --state ready
+
+# Force-kill one explicit process for crash testing
+unity-cli --project D:/Projects/MyGame instances kill --force
+```
+
+Full project paths are matched exactly before any convenience fallback, so a
+project such as `MyGame` is never confused with `MyGame_clone_0`. Destructive
+`instances kill` calls require both an explicit selector and `--force`.
+
+### ParrelSync Lifecycle
+
+ParrelSync is optional. The connector discovers it through reflection, so it
+does not add a compile-time package dependency.
+
+```bash
+# Run against the original project
+unity-cli --project D:/Projects/MyGame parrelsync list
+unity-cli --project D:/Projects/MyGame parrelsync ensure --count 2 --open
+
+# Normal cleanup
+unity-cli --project D:/Projects/MyGame_clone_0 editor quit
+
+# Crash simulation (bypasses Unity shutdown hooks)
+unity-cli --project D:/Projects/MyGame instances kill --force
 ```
 
 ## AI Agent Integration

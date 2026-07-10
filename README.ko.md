@@ -143,7 +143,9 @@ Unity 커넥터의 동작:
 
 | 명령어 | 설명 |
 |--------|------|
-| `editor` | Unity Editor play/stop/pause/refresh 제어 |
+| `editor` | Unity Editor play/stop/pause/quit/refresh 제어 |
+| `instances` | 인스턴스 목록·대기 또는 명시적으로 선택한 Editor 강제 종료 |
+| `parrelsync` | ParrelSync clone 조회·생성·실행 |
 | `console` | 콘솔 로그 읽기, 필터링, 지우기 |
 | `exec` | Unity 안에서 임의 C# 코드 실행 |
 | `test` | EditMode/PlayMode 테스트 실행 |
@@ -169,6 +171,9 @@ unity-cli editor stop
 
 # 일시정지 토글 (플레이 모드에서만 동작)
 unity-cli editor pause
+
+# 선택한 Editor 정상 종료
+unity-cli --project D:/Projects/Game/client_clone_0 editor quit
 
 # 에셋 새로고침
 unity-cli editor refresh
@@ -368,15 +373,15 @@ unity-cli status
 | 플래그 | 설명 | 기본값 |
 |--------|------|--------|
 | `--port <N>` | Unity 인스턴스 포트 직접 지정 (자동 탐지 건너뜀) | auto |
-| `--project <path>` | 프로젝트 경로로 Unity 인스턴스 선택 | latest |
+| `--project <path>` | canonical 경로 완전일치 또는 모호하지 않은 이름/접미사로 선택 | latest |
 | `--timeout <ms>` | HTTP 요청 타임아웃 | 120000 |
 
 ```bash
 # 특정 Unity 인스턴스에 연결
 unity-cli --port 8091 editor play
 
-# 여러 Unity 인스턴스 중 프로젝트 경로로 선택
-unity-cli --project MyGame editor stop
+# 여러 Unity 인스턴스 중 canonical 프로젝트 경로로 선택
+unity-cli --project D:/Projects/MyGame editor stop
 ```
 
 모든 명령어에 `--help`를 붙이면 상세 사용법을 볼 수 있습니다:
@@ -477,17 +482,44 @@ unity-cli spawn --params '{"x":1,"y":0,"z":5,"prefab":"Goblin"}'
 여러 Unity Editor가 열려 있으면, 각각 다른 포트(8090, 8091, ...)에 등록됩니다:
 
 ```bash
-# 실행 중인 모든 인스턴스 확인
-ls ~/.unity-cli/instances/
+# 실행 중인 모든 인스턴스와 식별 정보 확인
+unity-cli instances list --json
 
-# 프로젝트 경로로 선택
-unity-cli --project MyGame editor play
+# 정확한 프로젝트 경로로 선택
+unity-cli --project D:/Projects/MyGame editor play
 
 # 포트로 선택
 unity-cli --port 8091 editor play
 
 # 기본: 가장 최근 등록된 인스턴스 사용
 unity-cli editor play
+
+# clone이 준비될 때까지 대기
+unity-cli --project D:/Projects/MyGame_clone_0 instances wait --state ready
+
+# 크래시 테스트를 위해 한 프로세스 강제 종료
+unity-cli --project D:/Projects/MyGame instances kill --force
+```
+
+전체 프로젝트 경로는 편의 매칭보다 먼저 완전일치하므로 `MyGame`이
+`MyGame_clone_0`으로 잘못 선택되지 않습니다. 파괴적인 `instances kill`은
+명시적 대상 선택과 `--force`를 모두 요구합니다.
+
+### ParrelSync 수명주기
+
+ParrelSync는 선택 의존성입니다. 커넥터가 리플렉션으로 탐색하므로
+ParrelSync가 없는 프로젝트도 그대로 컴파일됩니다.
+
+```bash
+# 원본 프로젝트를 대상으로 실행
+unity-cli --project D:/Projects/MyGame parrelsync list
+unity-cli --project D:/Projects/MyGame parrelsync ensure --count 2 --open
+
+# 정상 정리
+unity-cli --project D:/Projects/MyGame_clone_0 editor quit
+
+# 크래시 재현 (Unity 종료 훅을 우회)
+unity-cli --project D:/Projects/MyGame instances kill --force
 ```
 
 ## AI 에이전트 연동

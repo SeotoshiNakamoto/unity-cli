@@ -7,7 +7,7 @@ using UnityEditorInternal;
 
 namespace UnityCliConnector.Tools
 {
-    [UnityCliTool(Description = "Controls Unity editor state. Actions: play, stop, pause, refresh, set_active_tool, add_tag, remove_tag, add_layer, remove_layer.")]
+    [UnityCliTool(Description = "Controls Unity editor state. Actions: play, stop, pause, quit, refresh, set_active_tool, add_tag, remove_tag, add_layer, remove_layer.")]
     public static class ManageEditor
     {
         private const int FirstUserLayerIndex = 8;
@@ -16,7 +16,7 @@ namespace UnityCliConnector.Tools
 
         public class Parameters
         {
-            [ToolParameter("Action to perform: play, stop, pause, refresh, set_active_tool, add_tag, remove_tag, add_layer, remove_layer", Required = true)]
+            [ToolParameter("Action to perform: play, stop, pause, quit, refresh, set_active_tool, add_tag, remove_tag, add_layer, remove_layer", Required = true)]
             public string Action { get; set; }
 
             [ToolParameter("Wait for action to complete before responding")]
@@ -80,6 +80,12 @@ namespace UnityCliConnector.Tools
                         return new SuccessResponse("Exited play mode.");
                     }
                     return new SuccessResponse("Already stopped (not in play mode).");
+
+                case "quit":
+                    // Exit immediately. The CLI treats a connection closed before
+                    // response as success, which is expected for process shutdown.
+                    EditorApplication.Exit(0);
+                    return new SuccessResponse("Unity Editor quit requested.");
 
                 case "set_active_tool":
                     var toolNameResult = p.GetRequired("tool_name", "'tool_name' parameter required.");
