@@ -22,6 +22,9 @@ namespace UnityCliConnector
 
         static Heartbeat()
         {
+            if (!EditorProcessGuard.IsPrimaryEditorProcess)
+                return;
+
             EditorApplication.update += Tick;
             EditorApplication.quitting += Cleanup;
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;

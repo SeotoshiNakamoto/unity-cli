@@ -40,6 +40,9 @@ namespace UnityCliConnector
 
         static HttpServer()
         {
+            if (!EditorProcessGuard.IsPrimaryEditorProcess)
+                return;
+
             Start();
             EditorApplication.quitting += Stop;
             AssemblyReloadEvents.beforeAssemblyReload += StopListener;
