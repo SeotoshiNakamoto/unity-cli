@@ -146,6 +146,7 @@ Before compiling or reloading, the Connector records the state (`compiling`, `re
 | `editor` | Play/stop/pause/quit/refresh the Unity Editor |
 | `instances` | List, wait for, or force-kill an explicitly selected Editor |
 | `parrelsync` | List, create, and open ParrelSync clones |
+| `player` | Launch and control opt-in Development/ReleaseE2E Player bridges |
 | `console` | Read, filter, and clear console logs |
 | `exec` | Run arbitrary C# code inside Unity |
 | `test` | Run EditMode/PlayMode tests |
@@ -520,6 +521,21 @@ unity-cli --project D:/Projects/MyGame_clone_0 editor quit
 
 # Crash simulation (bypasses Unity shutdown hooks)
 unity-cli --project D:/Projects/MyGame instances kill --force
+```
+
+### Compiled Player E2E
+
+A compatible game Development or ReleaseE2E Build can expose an opt-in loopback bridge. Each
+process uses a distinct port and token; final Shipping builds should omit the bridge.
+
+```bash
+unity-cli player launch --exe Builds/StandaloneWindows64/DoomBreaker.exe --port 47101 --token host-control --identity host-player --matching-address 10.220.150.31 --matching-port 7777 --wait
+unity-cli player call createRoom --port 47101 --token host --room-name e2e-smoke
+unity-cli player call snapshot --port 47101 --token host --json
+unity-cli player stop --port 47101 --token host
+
+# Crash simulation for host-migration tests
+unity-cli player kill --pid 12345 --force
 ```
 
 ## AI Agent Integration

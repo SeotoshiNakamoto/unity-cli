@@ -19,6 +19,7 @@ Bash/CLI로 Unity Editor를 제어한다. MCP가 아니다. 멀티 Unity 인스�
 - 멀티 인스턴스 확인/대기: `instances list --json` → `--project <정확한경로> instances wait --state ready`
 - ParrelSync 준비: 메인 프로젝트를 대상으로 `parrelsync ensure --count 2 --open` → 각 clone을 `instances wait`로 확인
 - 정상 clone 정리: clone을 대상으로 `editor quit`. 크래시 재현만 `instances kill --force`를 사용한다.
+- Windows Development/ReleaseE2E Player: 프로세스마다 고유 port/token/identity로 `player launch --exe ... --port ... --token ... --identity ... --matching-address ... --matching-port ... --wait` → `player call ...`; 같은 플레이어 재실행만 identity를 재사용한다. 빌드 기본 endpoint를 믿지 말고 테스트 대상 matching server를 명시한다. 정상 종료는 `player stop`, 호스트 크래시는 정확한 PID에 `player kill --force`.
 - 컴파일/콘솔 확인: `editor refresh` → `console --type error`
 - C# 조회/수정: 간단하면 `exec "return ...;"`, 복잡하면 `exec --file d:/tmp/query.cs --usings ...`
 - 시각 확인: 수치/상태는 `exec` 우선, 눈으로 봐야 할 때만 `screenshot --output_path d:/tmp/screenshot.png`
@@ -39,6 +40,7 @@ Bash/CLI로 Unity Editor를 제어한다. MCP가 아니다. 멀티 Unity 인스�
 - `instances`: Unity 연결 없이 heartbeat를 조회한다. `kill`은 정확한 `--project` 또는 `--port`와 `--force`가 모두 있어야 한다.
 - `parrelsync`: 메인 에디터에서만 `list/ensure/open`을 호출한다. 첫 clone 생성은 오래 걸릴 수 있어 `--async` 후 `job` 폴링을 권장한다.
 - `editor quit`: Unity 종료 훅을 거치는 정상 종료다. 호스트 크래시/비정상 단절 검증에는 쓰지 말고 외부 `instances kill --force`를 사용한다.
+- `player`: 에디터 커넥터가 아니라 Development/ReleaseE2E Player에 포함된 opt-in 루프백 브리지(127.0.0.1)를 제어한다. 최종 Shipping 빌드에는 브리지가 없어야 하며 port/token은 프로세스마다 분리한다.
 
 ## ProjectD Notes
 

@@ -73,6 +73,8 @@ func Execute() error {
 		return statusErr
 	case "instances":
 		return instancesCmd(subArgs, flagProject, flagPort, flagTimeout)
+	case "player":
+		return playerCmd(subArgs, flagPort, flagTimeout)
 	case "prime":
 		return primeCmd(flagProject, flagPort)
 	}
@@ -325,6 +327,13 @@ Multiple Instances:
   parrelsync ensure --count 2 --open  Create missing clones and open them
   parrelsync open --all         Open every existing ParrelSync clone
 
+E2E-enabled Players:
+  player launch --exe P --port N --token T --identity I [--wait]  Launch an E2E-enabled player
+  player call <command> --port N --token T           Call the runtime bridge
+  player wait --port N --token T                     Wait for bridge readiness
+  player stop --port N --token T                     Gracefully quit the player
+  player kill --pid N --force                        Crash/kill one explicit player
+
 Console:
   console                       Read error & warning logs (default)
   console --lines 20            Limit to N entries
@@ -511,6 +520,47 @@ Examples:
 
 Run these commands against the original project, not a clone. First-time clone
 creation can take several minutes; add --timeout or --async when appropriate.
+`)
+	case "player":
+		fmt.Print(`Usage: unity-cli player <launch|call|wait|stop|kill> [options]
+
+Control a compiled Unity Development or ReleaseE2E Player through its opt-in loopback bridge.
+The player build must contain a compatible bridge and be launched with a token.
+Final Shipping builds should omit the bridge.
+
+Subcommands:
+  launch
+    --exe <path>         Player executable (required).
+    --port <N>           Loopback bridge port (required global option).
+    --token <value>      Per-process bridge token (required).
+    --identity <value>   Stable per-player identity (defaults to token).
+    --matching-address <ip>  Override the build's matching server for E2E.
+    --matching-port <N>      Matching server UDP port; use with address.
+    --log-file <path>    Unity player log path.
+    --wait               Wait until the bridge answers ping.
+    --no-graphics        Pass -nographics to the player.
+  call <command>
+    --port <N>           Bridge port (required global option).
+    --token <value>      Bridge token (required).
+    --params <json>      Additional request fields.
+    --room-name <name>   createRoom convenience field.
+    --room-id <id>       joinRoom convenience field.
+    --passive-id <id>    applyPassive convenience field.
+    --json               Print the complete response envelope.
+  wait                   Poll ping until the global --timeout expires.
+  stop                   Send the graceful quit command.
+  kill
+    --pid <N>            Exact player process id.
+    --force              Required safety acknowledgement.
+
+Examples:
+  unity-cli player launch --exe Builds/StandaloneWindows64/DoomBreaker.exe --port 47101 --token host-control --identity host-player --matching-address 10.220.150.31 --matching-port 7777 --wait
+  unity-cli player call createRoom --port 47101 --token host --room-name e2e-smoke
+  unity-cli player call snapshot --port 47101 --token host --json
+  unity-cli player call joinRoom --port 47102 --token client --room-id ABC123
+  unity-cli player kill --pid 12345 --force
+
+Use a distinct port and token per process. The bridge binds to 127.0.0.1 only.
 `)
 	case "console":
 		fmt.Print(`Usage: unity-cli console [options]
