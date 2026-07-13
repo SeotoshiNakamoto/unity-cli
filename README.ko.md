@@ -146,7 +146,7 @@ Unity 커넥터의 동작:
 | `editor` | Unity Editor play/stop/pause/quit/refresh 제어 |
 | `instances` | 인스턴스 목록·대기 또는 명시적으로 선택한 Editor 강제 종료 |
 | `parrelsync` | ParrelSync clone 조회·생성·실행 |
-| `player` | opt-in Development/ReleaseE2E Player 브리지 실행·제어 |
+| `player` | opt-in Development/Release Player 브리지 실행·제어 |
 | `console` | 콘솔 로그 읽기, 필터링, 지우기 |
 | `exec` | Unity 안에서 임의 C# 코드 실행 |
 | `test` | EditMode/PlayMode 테스트 실행 |
@@ -525,11 +525,12 @@ unity-cli --project D:/Projects/MyGame instances kill --force
 
 ### 컴파일된 Player E2E
 
-호환 게임의 Development 또는 ReleaseE2E Build는 실행 인자로 opt-in하는 루프백 브리지를 제공할 수 있습니다.
+호환 게임의 Development 또는 Release Build는 실행 인자로 opt-in하는 루프백 브리지를 제공할 수 있습니다. Distribution Build는 브리지를 제거해야 합니다.
 각 프로세스는 서로 다른 port/token을 사용하며 최종 Shipping 빌드에는 브리지를 포함하지 않습니다.
+`MATCHING_HOST`, `MATCHING_PORT`는 대상 프로젝트의 지침에서 설정합니다. unity-cli는 게임별 매칭 endpoint를 소유하지 않습니다.
 
 ```bash
-unity-cli player launch --exe Builds/StandaloneWindows64/DoomBreaker.exe --port 47101 --token host-control --identity host-player --matching-address 10.220.150.31 --matching-port 7777 --wait
+unity-cli player launch --exe Builds/StandaloneWindows64/DoomBreaker.exe --port 47101 --token host-control --identity host-player --matching-address "$MATCHING_HOST" --matching-port "$MATCHING_PORT" --wait
 unity-cli player call createRoom --port 47101 --token host --room-name e2e-smoke
 unity-cli player call snapshot --port 47101 --token host --json
 unity-cli player stop --port 47101 --token host
