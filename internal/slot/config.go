@@ -33,6 +33,7 @@ type SlotConfig struct {
 	DesktopIndex           *int   `json:"desktopIndex,omitempty"`
 	DesktopName            string `json:"desktopName,omitempty"`
 	DesktopFallbackFromEnd *int   `json:"desktopFallbackFromEnd,omitempty"`
+	ShutdownWhenIdle       bool   `json:"shutdownWhenIdle,omitempty"`
 }
 
 type ProjectConfig struct {

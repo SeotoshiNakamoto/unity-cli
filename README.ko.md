@@ -594,6 +594,9 @@ Windows 창 위치를 안정적으로 유지하려면 슬롯별로 정확한 가
 `desktopIndex`도 계속 지원하지만 이름/fallback 선택과 함께 쓸 수 없습니다. `slot doctor`는
 해결된 index와 이름/fallback 중 어느 기준을 사용했는지 출력합니다.
 
+슬롯에 `"shutdownWhenIdle": true`를 두면 해당 lane이 가져갈 검증 작업이 없을 때 Unity
+Editor를 정상 종료합니다. 새 작업이 오면 다시 실행하고, 바로 이어질 작업이 있을 때만 유지합니다.
+
 ## AI 에이전트 연동
 
 `prime` 명령은 Unity 연결 상태와 사용 가능한 모든 도구를 LLM 컨텍스트 주입용 형식으로 출력합니다:

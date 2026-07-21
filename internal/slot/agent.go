@@ -189,6 +189,7 @@ func (a *Agent) submit(ctx context.Context, request *SubmitRequest) (*Job, error
 func (a *Agent) runSlot(ctx context.Context, configuredSlot SlotConfig) {
 	var stickyAffinity string
 	var stickyUntil time.Time
+	idleShutdownChecked := false
 	for ctx.Err() == nil {
 		if stickyAffinity != "" && !time.Now().Before(stickyUntil) {
 			_ = a.Store.ClearAffinityLease(context.Background(), configuredSlot.Project, stickyAffinity, configuredSlot.ID)
@@ -197,7 +198,7 @@ func (a *Agent) runSlot(ctx context.Context, configuredSlot SlotConfig) {
 		}
 		affinityOnly := stickyAffinity != "" && time.Now().Before(stickyUntil)
 		job, err := a.Store.Claim(ctx, configuredSlot.Project, configuredSlot.ID, stickyAffinity, affinityOnly)
-		if err != nil || job == nil {
+		if err != nil {
 			select {
 			case <-ctx.Done():
 				return
@@ -205,6 +206,19 @@ func (a *Agent) runSlot(ctx context.Context, configuredSlot SlotConfig) {
 			}
 			continue
 		}
+		if job == nil {
+			if configuredSlot.ShutdownWhenIdle && !idleShutdownChecked {
+				_ = shutdownUnityWhenIdle(ctx, configuredSlot)
+				idleShutdownChecked = true
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(a.Config.PollInterval()):
+			}
+			continue
+		}
+		idleShutdownChecked = false
 		result, logPath, runErr := a.Runner.Run(ctx, *job, configuredSlot)
 		status := JobPassed
 		if runErr != nil {
@@ -240,6 +254,7 @@ func (a *Agent) Doctor(ctx context.Context) DoctorReport {
 			DesktopIndex:           configuredSlot.DesktopIndex,
 			DesktopName:            configuredSlot.DesktopName,
 			DesktopFallbackFromEnd: configuredSlot.DesktopFallbackFromEnd,
+			ShutdownWhenIdle:       configuredSlot.ShutdownWhenIdle,
 			Healthy:                true,
 		}
 		common, err := gitCommonDir(ctx, configuredSlot.Worktree)

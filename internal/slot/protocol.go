@@ -87,6 +87,7 @@ type SlotDoctor struct {
 	DesktopIndex           *int   `json:"desktopIndex,omitempty"`
 	DesktopName            string `json:"desktopName,omitempty"`
 	DesktopFallbackFromEnd *int   `json:"desktopFallbackFromEnd,omitempty"`
+	ShutdownWhenIdle       bool   `json:"shutdownWhenIdle,omitempty"`
 	ResolvedDesktopIndex   *int   `json:"resolvedDesktopIndex,omitempty"`
 	DesktopSelectionSource string `json:"desktopSelectionSource,omitempty"`
 	Healthy                bool   `json:"healthy"`

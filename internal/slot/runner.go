@@ -226,6 +226,35 @@ func waitForExactUnity(ctx context.Context, projectPath string, timeout time.Dur
 	}
 }
 
+func shutdownUnityWhenIdle(ctx context.Context, slot SlotConfig) error {
+	projectPath := filepath.Join(slot.Worktree, slot.ProjectSubdir)
+	if _, err := findExactUnityInstance(projectPath); err != nil {
+		return nil
+	}
+	unityCLI, err := resolveUnityCLI(slot.UnityCLI)
+	if err != nil {
+		return err
+	}
+	if _, err := runCommand(ctx, io.Discard, 2*time.Minute, unityCLI,
+		"--project", projectPath, "editor", "quit"); err != nil {
+		return fmt.Errorf("quit idle Unity for %s: %w", projectPath, err)
+	}
+	deadline := time.Now().Add(2 * time.Minute)
+	for {
+		if _, err := findExactUnityInstance(projectPath); err != nil {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("idle Unity did not exit for %s", projectPath)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+}
+
 func normalizeExactProjectPath(path string) string {
 	cleaned := filepath.Clean(path)
 	if absolute, err := filepath.Abs(cleaned); err == nil {

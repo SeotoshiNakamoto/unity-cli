@@ -599,6 +599,10 @@ second-to-last. The legacy zero-based `desktopIndex` remains supported but
 cannot be combined with name/fallback selection. `slot doctor` reports the
 resolved index and whether the name or fallback selected it.
 
+Set `"shutdownWhenIdle": true` on a slot to close its Unity Editor gracefully
+whenever that lane has no claimable validation job. A new job launches the
+Editor again and keeps it alive only while immediately queued work remains.
+
 ## AI Agent Integration
 
 The `prime` command outputs Unity connection status and all available tools in a format designed for LLM context injection:
