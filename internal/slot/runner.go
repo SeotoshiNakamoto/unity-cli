@@ -79,6 +79,7 @@ func (r Runner) Run(ctx context.Context, job Job, slot SlotConfig) (*Result, str
 		return nil, logPath, fmt.Errorf("suite %q is not defined for %s", job.Suite, projectConfig.Project)
 	}
 	projectPath := filepath.Join(slot.Worktree, projectConfig.UnityProjectSubdir)
+	desktopTarget := desktopTargetFor(slot)
 	if _, err := os.Stat(filepath.Join(projectPath, "ProjectSettings", "ProjectVersion.txt")); err != nil {
 		return nil, logPath, fmt.Errorf("invalid Unity project path %s: %w", projectPath, err)
 	}
@@ -92,14 +93,14 @@ func (r Runner) Run(ctx context.Context, job Job, slot SlotConfig) (*Result, str
 		if launchErr != nil {
 			return nil, logPath, launchErr
 		}
-		if slot.DesktopIndex != nil && slot.DesktopHelper != "" {
+		if desktopTarget.configured() && slot.DesktopHelper != "" {
 			moveCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			moveErr := moveWindowToDesktopWithRetry(moveCtx, slot.DesktopHelper, pid, *slot.DesktopIndex)
+			moveErr := moveWindowToDesktopWithRetry(moveCtx, slot.DesktopHelper, pid, desktopTarget)
 			cancel()
 			if moveErr != nil {
 				logf("early desktop move failed; will retry after readiness: %v", moveErr)
 			} else {
-				logf("moved starting Unity pid=%d to desktop=%d", pid, *slot.DesktopIndex)
+				logf("moved starting Unity pid=%d to desktop target %s", pid, desktopTarget.description())
 			}
 		}
 		if _, waitErr := waitForExactUnity(ctx, projectPath, 15*time.Minute); waitErr != nil {
@@ -111,17 +112,17 @@ func (r Runner) Run(ctx context.Context, job Job, slot SlotConfig) (*Result, str
 		return nil, logPath, fmt.Errorf("wait for exact Unity project readiness before validation: %w", waitErr)
 	}
 
-	if slot.DesktopIndex != nil && slot.DesktopHelper != "" {
+	if desktopTarget.configured() && slot.DesktopHelper != "" {
 		if instance, findErr := findExactUnityInstance(projectPath); findErr != nil {
 			logf("desktop move skipped: %v", findErr)
 		} else {
 			moveCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-			moveErr := moveWindowToDesktop(moveCtx, slot.DesktopHelper, instance.PID, *slot.DesktopIndex)
+			moveErr := moveWindowToDesktop(moveCtx, slot.DesktopHelper, instance.PID, desktopTarget)
 			cancel()
 			if moveErr != nil {
 				logf("desktop move disabled for this run: %v", moveErr)
 			} else {
-				logf("moved Unity pid=%d to desktop=%d", instance.PID, *slot.DesktopIndex)
+				logf("moved Unity pid=%d to desktop target %s", instance.PID, desktopTarget.description())
 			}
 		}
 	}

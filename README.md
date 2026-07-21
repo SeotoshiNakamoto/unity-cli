@@ -584,6 +584,21 @@ unity-slot-agent install
 `install` uses the current user's login Run key and starts the agent hidden; it
 does not require an administrator-owned Windows service.
 
+For stable Windows placement, a slot can prefer an exact virtual desktop name
+and fall back to a position counted from the end when that name is unavailable:
+
+```json
+{
+  "desktopName": "LLM Unity Slot 1",
+  "desktopFallbackFromEnd": 2
+}
+```
+
+`desktopFallbackFromEnd: 1` means the last desktop and `2` means the
+second-to-last. The legacy zero-based `desktopIndex` remains supported but
+cannot be combined with name/fallback selection. `slot doctor` reports the
+resolved index and whether the name or fallback selected it.
+
 ## AI Agent Integration
 
 The `prime` command outputs Unity connection status and all available tools in a format designed for LLM context injection:

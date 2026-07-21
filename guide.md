@@ -13,6 +13,7 @@ Bash/CLI로 Unity Editor를 제어한다. MCP가 아니다. 멀티 Unity 인스�
 - 콘솔/컴파일 확인 때문에 `Assets/Reimport All` 또는 `AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate)`를 쓰지 않는다. `editor refresh` 후 `console --type error`만 사용한다.
 - `trace` 훅은 도메인 리로드/스크립트 리컴파일 시 사라진다. 리컴파일 후에는 다시 등록한다.
 - 공용 검증 lane은 `slot submit`으로만 요청한다. validation worktree를 직접 checkout하거나 수정하지 않는다. dirty 상태는 `--snapshot`으로 브랜치와 실제 index를 건드리지 않고 고정한다.
+- Windows 검증 Unity의 가상 데스크톱은 agent 설정의 `desktopName`을 우선하고 `desktopFallbackFromEnd`로 끝에서 센 위치를 fallback한다. 고정 `desktopIndex`와 둘을 섞지 않는다.
 
 ## Common Workflows
 

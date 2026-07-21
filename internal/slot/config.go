@@ -23,14 +23,16 @@ type AgentConfig struct {
 }
 
 type SlotConfig struct {
-	ID              string `json:"id"`
-	Project         string `json:"project"`
-	Worktree        string `json:"worktree"`
-	ProjectSubdir   string `json:"projectSubdir,omitempty"`
-	UnityCLI        string `json:"unityCli,omitempty"`
-	UnityExecutable string `json:"unityExecutable,omitempty"`
-	DesktopHelper   string `json:"desktopHelper,omitempty"`
-	DesktopIndex    *int   `json:"desktopIndex,omitempty"`
+	ID                     string `json:"id"`
+	Project                string `json:"project"`
+	Worktree               string `json:"worktree"`
+	ProjectSubdir          string `json:"projectSubdir,omitempty"`
+	UnityCLI               string `json:"unityCli,omitempty"`
+	UnityExecutable        string `json:"unityExecutable,omitempty"`
+	DesktopHelper          string `json:"desktopHelper,omitempty"`
+	DesktopIndex           *int   `json:"desktopIndex,omitempty"`
+	DesktopName            string `json:"desktopName,omitempty"`
+	DesktopFallbackFromEnd *int   `json:"desktopFallbackFromEnd,omitempty"`
 }
 
 type ProjectConfig struct {
@@ -113,6 +115,12 @@ func LoadAgentConfig(path string) (*AgentConfig, error) {
 		seen[s.ID] = true
 		if s.ProjectSubdir == "" {
 			s.ProjectSubdir = "client"
+		}
+		if s.DesktopIndex != nil && (s.DesktopName != "" || s.DesktopFallbackFromEnd != nil) {
+			return nil, fmt.Errorf("slot %q desktopIndex cannot be combined with desktopName/desktopFallbackFromEnd", s.ID)
+		}
+		if s.DesktopFallbackFromEnd != nil && *s.DesktopFallbackFromEnd <= 0 {
+			return nil, fmt.Errorf("slot %q desktopFallbackFromEnd must be positive", s.ID)
 		}
 	}
 	return &config, nil

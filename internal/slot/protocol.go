@@ -77,14 +77,18 @@ type DoctorReport struct {
 }
 
 type SlotDoctor struct {
-	ID              string `json:"id"`
-	Project         string `json:"project"`
-	Worktree        string `json:"worktree"`
-	GitCommonDir    string `json:"gitCommonDir,omitempty"`
-	UnityProject    string `json:"unityProject,omitempty"`
-	UnityCLI        string `json:"unityCli,omitempty"`
-	UnityExecutable string `json:"unityExecutable,omitempty"`
-	DesktopIndex    *int   `json:"desktopIndex,omitempty"`
-	Healthy         bool   `json:"healthy"`
-	Error           string `json:"error,omitempty"`
+	ID                     string `json:"id"`
+	Project                string `json:"project"`
+	Worktree               string `json:"worktree"`
+	GitCommonDir           string `json:"gitCommonDir,omitempty"`
+	UnityProject           string `json:"unityProject,omitempty"`
+	UnityCLI               string `json:"unityCli,omitempty"`
+	UnityExecutable        string `json:"unityExecutable,omitempty"`
+	DesktopIndex           *int   `json:"desktopIndex,omitempty"`
+	DesktopName            string `json:"desktopName,omitempty"`
+	DesktopFallbackFromEnd *int   `json:"desktopFallbackFromEnd,omitempty"`
+	ResolvedDesktopIndex   *int   `json:"resolvedDesktopIndex,omitempty"`
+	DesktopSelectionSource string `json:"desktopSelectionSource,omitempty"`
+	Healthy                bool   `json:"healthy"`
+	Error                  string `json:"error,omitempty"`
 }

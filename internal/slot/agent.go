@@ -231,14 +231,16 @@ func (a *Agent) Doctor(ctx context.Context) DoctorReport {
 	}
 	for _, configuredSlot := range a.Config.Slots {
 		slotReport := SlotDoctor{
-			ID:              configuredSlot.ID,
-			Project:         configuredSlot.Project,
-			Worktree:        configuredSlot.Worktree,
-			UnityProject:    filepath.Join(configuredSlot.Worktree, configuredSlot.ProjectSubdir),
-			UnityCLI:        configuredSlot.UnityCLI,
-			UnityExecutable: configuredSlot.UnityExecutable,
-			DesktopIndex:    configuredSlot.DesktopIndex,
-			Healthy:         true,
+			ID:                     configuredSlot.ID,
+			Project:                configuredSlot.Project,
+			Worktree:               configuredSlot.Worktree,
+			UnityProject:           filepath.Join(configuredSlot.Worktree, configuredSlot.ProjectSubdir),
+			UnityCLI:               configuredSlot.UnityCLI,
+			UnityExecutable:        configuredSlot.UnityExecutable,
+			DesktopIndex:           configuredSlot.DesktopIndex,
+			DesktopName:            configuredSlot.DesktopName,
+			DesktopFallbackFromEnd: configuredSlot.DesktopFallbackFromEnd,
+			Healthy:                true,
 		}
 		common, err := gitCommonDir(ctx, configuredSlot.Worktree)
 		if err != nil {
@@ -263,17 +265,21 @@ func (a *Agent) Doctor(ctx context.Context) DoctorReport {
 				slotReport.Error = joinError(slotReport.Error, "Unity executable missing")
 			}
 		}
-		if configuredSlot.DesktopIndex != nil {
+		desktopTarget := desktopTargetFor(configuredSlot)
+		if desktopTarget.configured() {
 			if _, err := os.Stat(configuredSlot.DesktopHelper); err != nil {
 				slotReport.Healthy = false
 				slotReport.Error = joinError(slotReport.Error, "virtual desktop helper missing")
 			} else {
 				desktopCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-				desktopErr := doctorDesktopHelper(desktopCtx, configuredSlot.DesktopHelper, *configuredSlot.DesktopIndex)
+				desktopResult, desktopErr := doctorDesktopHelper(desktopCtx, configuredSlot.DesktopHelper, desktopTarget)
 				cancel()
 				if desktopErr != nil {
 					slotReport.Healthy = false
 					slotReport.Error = joinError(slotReport.Error, desktopErr.Error())
+				} else if desktopResult != nil {
+					slotReport.ResolvedDesktopIndex = desktopResult.SelectedDesktop
+					slotReport.DesktopSelectionSource = desktopResult.SelectionSource
 				}
 			}
 		}
