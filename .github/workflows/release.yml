@@ -40,14 +40,36 @@ jobs:
           if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
           VERSION="${GITHUB_REF_NAME}"
           go build -ldflags="-s -w -X main.Version=${VERSION}" -o "unity-cli-${GOOS}-${GOARCH}${EXT}" .
+          go build -ldflags="-s -w -X main.Version=${VERSION}" -o "unity-slot-agent-${GOOS}-${GOARCH}${EXT}" ./cmd/unity-slot-agent
 
       - uses: actions/upload-artifact@v4
         with:
           name: unity-cli-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: unity-cli-*
+          path: |
+            unity-cli-*
+            unity-slot-agent-*
+
+  build-slot-desktop:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build virtual desktop helper
+        run: cargo build --release --manifest-path native/unity-slot-desktop/Cargo.toml
+
+      - name: Rename helper
+        shell: pwsh
+        run: Copy-Item native/unity-slot-desktop/target/release/unity-slot-desktop.exe unity-slot-desktop-windows-amd64.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unity-slot-desktop-windows-amd64
+          path: unity-slot-desktop-windows-amd64.exe
 
   release:
-    needs: build
+    needs: [build, build-slot-desktop]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -58,4 +80,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: unity-cli-*
+          files: unity-*

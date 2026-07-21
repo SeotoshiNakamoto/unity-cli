@@ -39,6 +39,7 @@ func primeCmd(project string, port int) error {
 		sb.WriteString("\n\n")
 	}
 	sb.WriteString("Compiled Development/ReleaseE2E Player: use `player launch/call/wait/stop/kill`; final Shipping builds should omit the bridge. Run `player --help` for the contract.\n\n")
+	sb.WriteString("Warm validation worktrees: use `slot doctor` and `slot submit --snapshot --suite compile --wait`; never edit a validation worktree directly. Run `slot --help` for the contract.\n\n")
 
 	// 2. Connection status + tool list
 	inst, err := client.DiscoverInstance(project, port)

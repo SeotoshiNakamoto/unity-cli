@@ -12,6 +12,7 @@ Bash/CLI로 Unity Editor를 제어한다. MCP가 아니다. 멀티 Unity 인스�
 - 에셋/SO 수정 후에는 `AssetDatabase.SaveAssets()`를 호출한다. 필요하면 `reserialize` 또는 에디터 refresh/console 확인까지 한다.
 - 콘솔/컴파일 확인 때문에 `Assets/Reimport All` 또는 `AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate)`를 쓰지 않는다. `editor refresh` 후 `console --type error`만 사용한다.
 - `trace` 훅은 도메인 리로드/스크립트 리컴파일 시 사라진다. 리컴파일 후에는 다시 등록한다.
+- 공용 검증 lane은 `slot submit`으로만 요청한다. validation worktree를 직접 checkout하거나 수정하지 않는다. dirty 상태는 `--snapshot`으로 브랜치와 실제 index를 건드리지 않고 고정한다.
 
 ## Common Workflows
 
@@ -21,6 +22,7 @@ Bash/CLI로 Unity Editor를 제어한다. MCP가 아니다. 멀티 Unity 인스�
 - 정상 clone 정리: clone을 대상으로 `editor quit`. 크래시 재현만 `instances kill --force`를 사용한다.
 - Windows Development/ReleaseE2E Player: 프로세스마다 고유 port/token/identity로 `player launch --exe ... --port ... --token ... --identity ... --matching-address ... --matching-port ... --wait` → `player call ...`; 같은 플레이어 재실행만 identity를 재사용한다. 빌드 기본 endpoint를 믿지 말고 테스트 대상 matching server를 명시한다. 정상 종료는 `player stop`, 호스트 크래시는 정확한 PID에 `player kill --force`.
 - 컴파일/콘솔 확인: `editor refresh` → `console --type error`
+- 별도 Unity lane 검증: `slot doctor` → `slot submit --snapshot --suite compile --affinity <task> --wait`
 - C# 조회/수정: 간단하면 `exec "return ...;"`, 복잡하면 `exec --file d:/tmp/query.cs --usings ...`
 - 시각 확인: 수치/상태는 `exec` 우선, 눈으로 봐야 할 때만 `screenshot --output_path d:/tmp/screenshot.png`
 - UI QA: 플레이 모드에서 `ui tree --runtime --interactive` 먼저 사용한다. 클릭/입력은 `ui click --runtime ...`, `ui type --runtime ...`; 화면 전환은 `ui events`로 확인한다.
@@ -41,6 +43,7 @@ Bash/CLI로 Unity Editor를 제어한다. MCP가 아니다. 멀티 Unity 인스�
 - `parrelsync`: 메인 에디터에서만 `list/ensure/open`을 호출한다. 첫 clone 생성은 오래 걸릴 수 있어 `--async` 후 `job` 폴링을 권장한다.
 - `editor quit`: Unity 종료 훅을 거치는 정상 종료다. 호스트 크래시/비정상 단절 검증에는 쓰지 말고 외부 `instances kill --force`를 사용한다.
 - `player`: 에디터 커넥터가 아니라 Development/ReleaseE2E Player에 포함된 opt-in 루프백 브리지(127.0.0.1)를 제어한다. 최종 Shipping 빌드에는 브리지가 없어야 하며 port/token은 프로세스마다 분리한다.
+- `slot`: 별도 `unity-slot-agent`가 같은 Git object store의 로컬 commit/snapshot SHA를 warm Unity worktree에서 detached 검증한다. snapshot 통과는 일반 commit·push 완료가 아니다.
 
 ## ProjectD Notes
 

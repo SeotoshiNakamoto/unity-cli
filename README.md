@@ -48,6 +48,11 @@ chmod +x unity-cli && sudo mv unity-cli /usr/local/bin/
 
 Supported platforms: Linux (amd64, arm64), macOS (Intel, Apple Silicon), Windows (amd64).
 
+The release installer also installs the optional `unity-slot-agent` worker. On
+Windows it includes `unity-slot-desktop`, which can move a worker-owned Unity
+window to a configured virtual desktop. Running the slot agent requires a
+machine-local config; ordinary editor commands do not.
+
 ### Update
 
 ```bash
@@ -538,6 +543,46 @@ unity-cli player stop --port 47101 --token host
 # Crash simulation for host-migration tests
 unity-cli player kill --pid 12345 --force
 ```
+
+## Warm Validation Slots
+
+`unity-slot-agent` queues immutable local commits into dedicated Git worktrees
+that keep their Unity `Library` caches. Source worktrees never share branches
+with validation lanes; each lane checks out the requested SHA in detached HEAD.
+
+```bash
+# Agent configuration and lane health
+unity-cli slot doctor
+
+# Dirty files are captured with a temporary Git index. The current branch,
+# real index, and worktree are not changed.
+unity-cli --timeout 1200000 slot submit --snapshot --suite compile --affinity task-123 --wait
+
+# An existing local commit can be submitted without pushing it.
+unity-cli slot submit --sha HEAD --suite compile
+unity-cli slot status
+```
+
+The repository defines portable suites in `.unity-slot.json`; machine-specific
+worktree, Unity executable, and desktop paths stay in the agent's local config.
+The current transport is machine-local, so the source and validation worktrees
+must share one Git object store.
+
+On a Windows verification host, initialize the worktrees once and register the
+agent for the current user's interactive login session:
+
+```powershell
+unity-slot-agent --repo D:\Projects\MyGame --slot-root C:\UnitySlots --slots 2 `
+  --unity "C:\Program Files\Unity\Hub\Editor\<version>\Editor\Unity.exe" `
+  --unity-cli "$env:LOCALAPPDATA\unity-cli\unity-cli.exe" `
+  --desktop-helper "$env:LOCALAPPDATA\unity-cli\unity-slot-desktop.exe" `
+  --desktop-start 2 init
+unity-slot-agent install
+```
+
+`init` refuses to replace an existing config unless `--force` is explicit.
+`install` uses the current user's login Run key and starts the agent hidden; it
+does not require an administrator-owned Windows service.
 
 ## AI Agent Integration
 

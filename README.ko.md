@@ -48,6 +48,10 @@ chmod +x unity-cli && sudo mv unity-cli /usr/local/bin/
 
 지원 플랫폼: Linux (amd64, arm64), macOS (Intel, Apple Silicon), Windows (amd64).
 
+릴리즈 설치 스크립트는 선택 기능인 `unity-slot-agent`도 함께 설치합니다.
+Windows에서는 worker가 소유한 Unity 창을 지정 가상 데스크톱으로 옮기는
+`unity-slot-desktop`도 포함합니다. 일반 Editor 명령에는 slot 설정이나 agent가 필요 없습니다.
+
 ### 업데이트
 
 ```bash
@@ -538,6 +542,43 @@ unity-cli player stop --port 47101 --token host
 # 호스트 마이그레이션 크래시 재현
 unity-cli player kill --pid 12345 --force
 ```
+
+## Warm Unity 검증 슬롯
+
+`unity-slot-agent`는 로컬 commit을 전용 Git worktree에 큐잉하고 각 lane의 Unity
+`Library` 캐시를 유지합니다. 작업 worktree의 브랜치를 validation lane과 공유하지
+않으며, lane은 요청된 SHA를 detached HEAD로 checkout합니다.
+
+```powershell
+# agent와 lane 설정 확인
+unity-cli slot doctor
+
+# 임시 Git index로 dirty 파일을 고정한다. 현재 브랜치, 실제 index, 작업 파일은 바뀌지 않는다.
+unity-cli --timeout 1200000 slot submit --snapshot --suite compile --affinity task-123 --wait
+
+# push하지 않은 기존 로컬 commit도 바로 제출 가능
+unity-cli slot submit --sha HEAD --suite compile
+unity-cli slot status
+```
+
+저장소는 `.unity-slot.json`에 이식 가능한 suite를 정의하고, 머신별 worktree·Unity
+실행 파일·가상 데스크톱 경로는 agent 로컬 설정에 둡니다. 현재 전송은 머신 로컬이므로
+작업 worktree와 validation worktree가 같은 Git object store를 공유해야 합니다.
+
+Windows 검증 호스트에서는 worktree를 한 번 초기화하고 현재 사용자의 로그인 세션에
+agent를 등록합니다.
+
+```powershell
+unity-slot-agent --repo D:\Projects\MyGame --slot-root C:\UnitySlots --slots 2 `
+  --unity "C:\Program Files\Unity\Hub\Editor\<version>\Editor\Unity.exe" `
+  --unity-cli "$env:LOCALAPPDATA\unity-cli\unity-cli.exe" `
+  --desktop-helper "$env:LOCALAPPDATA\unity-cli\unity-slot-desktop.exe" `
+  --desktop-start 2 init
+unity-slot-agent install
+```
+
+`init`은 `--force` 없이는 기존 설정을 덮어쓰지 않습니다. `install`은 관리자 Windows
+서비스 대신 현재 사용자의 로그인 Run 키를 사용하고 agent를 숨김 실행합니다.
 
 ## AI 에이전트 연동
 

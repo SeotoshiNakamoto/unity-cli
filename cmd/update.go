@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"time"
 )
 
@@ -116,9 +115,13 @@ func fetchLatestRelease() (*ghRelease, error) {
 
 // findAsset finds the release asset matching the current OS and architecture.
 func findAsset(assets []ghAsset) *ghAsset {
-	suffix := fmt.Sprintf("%s-%s", runtime.GOOS, runtime.GOARCH)
+	extension := ""
+	if runtime.GOOS == "windows" {
+		extension = ".exe"
+	}
+	expected := fmt.Sprintf("unity-cli-%s-%s%s", runtime.GOOS, runtime.GOARCH, extension)
 	for i, a := range assets {
-		if strings.Contains(a.Name, suffix) {
+		if a.Name == expected {
 			return &assets[i]
 		}
 	}

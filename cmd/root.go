@@ -77,6 +77,8 @@ func Execute() error {
 		return playerCmd(subArgs, flagPort, flagTimeout)
 	case "prime":
 		return primeCmd(flagProject, flagPort)
+	case "slot":
+		return slotCmd(subArgs, flagTimeout)
 	}
 
 	inst, err := client.DiscoverInstance(flagProject, flagPort)
@@ -430,6 +432,12 @@ Custom Tools:
 Status:
   status                        Show Unity Editor state (ready, compiling, etc.)
   instances list                Show every registered Unity Editor instance
+
+Validation Slots:
+  slot submit --sha HEAD --suite compile [--wait]  Queue a local commit for Unity validation
+  slot status [job-id] [--json]                    Show queue or one job
+  slot result <job-id> [--wait]                    Read or wait for validation result
+  slot doctor                                      Check configured validation lanes
 
 Update:
   update                        Update to the latest version
@@ -870,6 +878,35 @@ Options:
 Examples:
   unity-cli update
   unity-cli update --check
+`)
+	case "slot":
+		fmt.Print(`Usage: unity-cli slot <submit|status|result|doctor> [options]
+
+Queue immutable local commits for validation in warm Unity worktrees.
+The separately installed unity-slot-agent owns the queue and validation lanes.
+
+Subcommands:
+  submit
+    --repo <path>       Source worktree/repository (default: current directory)
+    --sha <revision>    Local commit to validate (default: HEAD)
+    --snapshot          Snapshot dirty files without changing branch or real index
+    --suite <name>      Suite from .unity-slot.json (default: compile)
+    --affinity <key>    Keep failed retries on the same lane
+    --wait              Wait for completion
+    --json              Print structured JSON
+  status [job-id]       Show recent jobs or one job
+  result <job-id>       Read a result; add --wait to block
+  doctor                Check agent and lane configuration
+
+Global --timeout controls --wait duration. Set UNITY_SLOT_ENDPOINT only when
+using a non-default local agent endpoint.
+
+Examples:
+  unity-cli --timeout 900000 slot submit --sha HEAD --suite compile --wait
+  unity-cli --timeout 900000 slot submit --snapshot --suite compile --wait
+  unity-cli slot status --json
+  unity-cli slot result val-20260720-120000-abcd1234 --wait
+  unity-cli slot doctor
 `)
 	case "custom-tools", "custom", "tools":
 		fmt.Print(`How to write custom tools for unity-cli

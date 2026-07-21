@@ -5,4 +5,5 @@ unity-cli
 .vscode/
 .idea/
 coverage.out
+native/**/target/
 CLAUDE.local.md
