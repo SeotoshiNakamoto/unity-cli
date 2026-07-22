@@ -36,13 +36,17 @@ func editorCmd(args []string, send sendFn, port int, project string, explicitPor
 	case "refresh":
 		_, compile := flags["compile"]
 		if compile {
+			fenceTimestamp := compilationFenceTimestamp(port, project, explicitPort)
 			resp, err := send("refresh_unity", map[string]interface{}{
 				"compile": "request",
 			})
 			if err != nil {
 				return nil, err
 			}
-			hasErrors := waitForReady(port, project, explicitPort)
+			hasErrors, err := waitForReady(port, project, explicitPort, fenceTimestamp)
+			if err != nil {
+				return nil, err
+			}
 			if hasErrors {
 				return nil, fmt.Errorf("compilation finished with errors (check unity-cli console)")
 			}

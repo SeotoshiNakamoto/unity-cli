@@ -54,6 +54,10 @@ func unityGone(status *client.Instance) bool {
 // Domain reload can temporarily bind the same Editor to a new port, so a fixed
 // port is used only when the caller explicitly supplied --port.
 func waitForAlive(inst *client.Instance, project string, explicitPort int, timeoutMs int) (*client.Instance, error) {
+	return waitForAliveWithProbe(inst, project, explicitPort, timeoutMs, unityHTTPReachable)
+}
+
+func waitForAliveWithProbe(inst *client.Instance, project string, explicitPort int, timeoutMs int, reachable func(*client.Instance) bool) (*client.Instance, error) {
 	selector := project
 	if selector == "" && inst != nil {
 		selector = inst.ProjectPath
@@ -66,7 +70,7 @@ func waitForAlive(inst *client.Instance, project string, explicitPort int, timeo
 		return client.FindByProject(selector)
 	}
 
-	if current, err := resolve(); err == nil && time.Now().UnixMilli()-current.Timestamp < 1000 {
+	if current, err := resolve(); err == nil && time.Now().UnixMilli()-current.Timestamp < 1000 && reachable(current) {
 		return current, nil
 	}
 
@@ -82,7 +86,7 @@ func waitForAlive(inst *client.Instance, project string, explicitPort int, timeo
 		if unityGone(status) {
 			return nil, fmt.Errorf("unity process exited (pid %d)", status.PID)
 		}
-		if time.Now().UnixMilli()-status.Timestamp < 1500 {
+		if time.Now().UnixMilli()-status.Timestamp < 1500 && reachable(status) {
 			fmt.Fprintf(os.Stderr, "Unity is ready.\n")
 			return status, nil
 		}
@@ -91,40 +95,108 @@ func waitForAlive(inst *client.Instance, project string, explicitPort int, timeo
 	return nil, fmt.Errorf("timed out waiting for Unity project %q", selector)
 }
 
-// waitForReady polls until the heartbeat state becomes "ready".
-// Returns true if compilation had errors.
-func waitForReady(port int, project string, explicitPort int) bool {
+func unityHTTPReachable(instance *client.Instance) bool {
+	_, err := client.Send(instance, "list", nil, 1000)
+	return err == nil
+}
+
+const (
+	compilationPollInterval       = 250 * time.Millisecond
+	compilationWaitTimeout        = 5 * time.Minute
+	stableReadyHeartbeatsRequired = 2
+)
+
+type compilationBarrier struct {
+	fenceTimestamp     int64
+	observedBusy       bool
+	readyHeartbeats    int
+	lastReadyTimestamp int64
+	compileErrors      bool
+}
+
+func (b *compilationBarrier) observe(status *client.Instance, reachable bool) (done bool, hasErrors bool) {
+	if status == nil || status.Timestamp <= b.fenceTimestamp {
+		return false, false
+	}
+
+	switch status.State {
+	case "compiling", "reloading":
+		b.observedBusy = true
+		b.resetReadyStreak()
+		return false, false
+	case "ready":
+		if !b.observedBusy || !reachable {
+			b.resetReadyStreak()
+			return false, false
+		}
+		if status.Timestamp <= b.lastReadyTimestamp {
+			return false, false
+		}
+		b.lastReadyTimestamp = status.Timestamp
+		b.readyHeartbeats++
+		b.compileErrors = b.compileErrors || status.CompileErrors
+		return b.readyHeartbeats >= stableReadyHeartbeatsRequired, b.compileErrors
+	default:
+		b.resetReadyStreak()
+		return false, false
+	}
+}
+
+func (b *compilationBarrier) resetReadyStreak() {
+	b.readyHeartbeats = 0
+	b.lastReadyTimestamp = 0
+	b.compileErrors = false
+}
+
+func resolveCompilationStatus(port int, project string, explicitPort int) (*client.Instance, error) {
+	if explicitPort > 0 {
+		return readActiveStatus(port)
+	}
+	return client.FindByProject(project)
+}
+
+// compilationFenceTimestamp captures the last heartbeat that existed before
+// RequestScriptCompilation is sent. A later ready heartbeat is not sufficient
+// by itself because Unity may publish it before the requested compile starts.
+func compilationFenceTimestamp(port int, project string, explicitPort int) int64 {
+	fence := time.Now().UnixMilli()
+	if status, err := resolveCompilationStatus(port, project, explicitPort); err == nil && status.Timestamp > fence {
+		fence = status.Timestamp
+	}
+	return fence
+}
+
+// waitForReady accepts completion only after the requested compilation cycle
+// was observed and the reconnected Editor published consecutive fresh ready
+// heartbeats that also answer over HTTP.
+func waitForReady(port int, project string, explicitPort int, fenceTimestamp int64) (bool, error) {
 	fmt.Fprintf(os.Stderr, "Waiting for compilation...\n")
 
-	deadline := time.Now().Add(5 * time.Minute)
+	barrier := compilationBarrier{fenceTimestamp: fenceTimestamp}
+	deadline := time.Now().Add(compilationWaitTimeout)
 	for time.Now().Before(deadline) {
-		time.Sleep(500 * time.Millisecond)
-		var (
-			status *client.Instance
-			err    error
-		)
-		if explicitPort > 0 {
-			status, err = readActiveStatus(port)
-		} else {
-			status, err = client.FindByProject(project)
-		}
+		time.Sleep(compilationPollInterval)
+		status, err := resolveCompilationStatus(port, project, explicitPort)
 		if err != nil {
 			continue
 		}
 		if unityGone(status) {
-			fmt.Fprintf(os.Stderr, "Unity process exited during compilation.\n")
-			return true
+			return false, fmt.Errorf("unity process exited during compilation (pid %d)", status.PID)
 		}
-		if status.State == "ready" {
-			if status.CompileErrors {
+
+		reachable := status.State == "ready" && unityHTTPReachable(status)
+		if done, hasErrors := barrier.observe(status, reachable); done {
+			if hasErrors {
 				fmt.Fprintf(os.Stderr, "Compilation finished with errors.\n")
 			} else {
 				fmt.Fprintf(os.Stderr, "Compilation complete.\n")
 			}
-			return status.CompileErrors
+			return hasErrors, nil
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "Timed out waiting for compilation (5m).\n")
-	return true
+	if !barrier.observedBusy {
+		return false, fmt.Errorf("timed out waiting for requested compilation to start (%s)", compilationWaitTimeout)
+	}
+	return false, fmt.Errorf("timed out waiting for Unity to become stable after compilation (%s)", compilationWaitTimeout)
 }
