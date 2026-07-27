@@ -48,10 +48,6 @@ chmod +x unity-cli && sudo mv unity-cli /usr/local/bin/
 
 지원 플랫폼: Linux (amd64, arm64), macOS (Intel, Apple Silicon), Windows (amd64).
 
-릴리즈 설치 스크립트는 선택 기능인 `unity-slot-agent`도 함께 설치합니다.
-Windows에서는 worker가 소유한 Unity 창을 지정 가상 데스크톱으로 옮기는
-`unity-slot-desktop`도 포함합니다. 일반 Editor 명령에는 slot 설정이나 agent가 필요 없습니다.
-
 ### 업데이트
 
 ```bash
@@ -543,59 +539,20 @@ unity-cli player stop --port 47101 --token host
 unity-cli player kill --pid 12345 --force
 ```
 
-## Warm Unity 검증 슬롯
+## Worktree 직접 검증
 
-`unity-slot-agent`는 로컬 commit을 전용 Git worktree에 큐잉하고 각 lane의 Unity
-`Library` 캐시를 유지합니다. 작업 worktree의 브랜치를 validation lane과 공유하지
-않으며, lane은 요청된 SHA를 detached HEAD로 checkout합니다.
-
-```powershell
-# agent와 lane 설정 확인
-unity-cli slot doctor
-
-# 임시 Git index로 dirty 파일을 고정한다. 현재 브랜치, 실제 index, 작업 파일은 바뀌지 않는다.
-unity-cli --timeout 1200000 slot submit --snapshot --suite compile --affinity task-123 --wait
-
-# push하지 않은 기존 로컬 commit도 바로 제출 가능
-unity-cli slot submit --sha HEAD --suite compile
-unity-cli slot status
-```
-
-저장소는 `.unity-slot.json`에 이식 가능한 suite를 정의하고, 머신별 worktree·Unity
-실행 파일·가상 데스크톱 경로는 agent 로컬 설정에 둡니다. 현재 전송은 머신 로컬이므로
-작업 worktree와 validation worktree가 같은 Git object store를 공유해야 합니다.
-
-Windows 검증 호스트에서는 worktree를 한 번 초기화하고 현재 사용자의 로그인 세션에
-agent를 등록합니다.
+대상 worktree를 연 Unity Editor에 직접 검증 명령을 보냅니다. Editor가 그 worktree를
+그대로 읽으므로 commit하지 않은 source와 asset 변경도 snapshot commit이나 detached
+checkout 없이 검증에 포함됩니다.
 
 ```powershell
-unity-slot-agent --repo D:\Projects\MyGame --slot-root C:\UnitySlots --slots 2 `
-  --unity "C:\Program Files\Unity\Hub\Editor\<version>\Editor\Unity.exe" `
-  --unity-cli "$env:LOCALAPPDATA\unity-cli\unity-cli.exe" `
-  --desktop-helper "$env:LOCALAPPDATA\unity-cli\unity-slot-desktop.exe" `
-  --desktop-start 2 init
-unity-slot-agent install
+unity-cli --project D:\Projects\MyGame-worktree status
+unity-cli --project D:\Projects\MyGame-worktree editor refresh --compile
+unity-cli --project D:\Projects\MyGame-worktree console --type error
 ```
 
-`init`은 `--force` 없이는 기존 설정을 덮어쓰지 않습니다. `install`은 관리자 Windows
-서비스 대신 현재 사용자의 로그인 Run 키를 사용하고 agent를 숨김 실행합니다.
-
-Windows 창 위치를 안정적으로 유지하려면 슬롯별로 정확한 가상 데스크톱 이름을 우선하고,
-이름을 찾지 못할 때 끝에서 센 위치로 fallback할 수 있습니다.
-
-```json
-{
-  "desktopName": "LLM 유니티 슬롯 1",
-  "desktopFallbackFromEnd": 2
-}
-```
-
-`desktopFallbackFromEnd: 1`은 마지막, `2`는 끝에서 두 번째 데스크톱입니다. 기존 0-based
-`desktopIndex`도 계속 지원하지만 이름/fallback 선택과 함께 쓸 수 없습니다. `slot doctor`는
-해결된 index와 이름/fallback 중 어느 기준을 사용했는지 출력합니다.
-
-슬롯에 `"shutdownWhenIdle": true`를 두면 해당 lane이 가져갈 검증 작업이 없을 때 Unity
-Editor를 정상 종료합니다. 새 작업이 오면 다시 실행하고, 바로 이어질 작업이 있을 때만 유지합니다.
+Editor 실행 수 제한, 작업 소유권, 브랜치 전환 안전 규칙은 프로젝트 운영 정책입니다.
+unity-cli는 이를 추론하거나 다른 Editor를 자동 종료하지 않습니다.
 
 ## AI 에이전트 연동
 

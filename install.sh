@@ -21,14 +21,10 @@ INSTALL_DIR="$HOME/.local/bin"
 mkdir -p "$INSTALL_DIR"
 
 URL="https://github.com/${REPO}/releases/latest/download/unity-cli-${OS}-${ARCH}"
-AGENT_URL="https://github.com/${REPO}/releases/latest/download/unity-slot-agent-${OS}-${ARCH}"
 
 echo "Downloading unity-cli for ${OS}/${ARCH}..."
 curl -fsSL "$URL" -o "$INSTALL_DIR/unity-cli"
 chmod +x "$INSTALL_DIR/unity-cli"
-echo "Downloading unity-slot-agent for ${OS}/${ARCH}..."
-curl -fsSL "$AGENT_URL" -o "$INSTALL_DIR/unity-slot-agent"
-chmod +x "$INSTALL_DIR/unity-slot-agent"
 
 case ":$PATH:" in
   *":$INSTALL_DIR:"*) ;;
@@ -48,4 +44,3 @@ esac
 
 echo "Installed unity-cli to $INSTALL_DIR/unity-cli"
 "$INSTALL_DIR/unity-cli" version
-"$INSTALL_DIR/unity-slot-agent" version

@@ -48,11 +48,6 @@ chmod +x unity-cli && sudo mv unity-cli /usr/local/bin/
 
 Supported platforms: Linux (amd64, arm64), macOS (Intel, Apple Silicon), Windows (amd64).
 
-The release installer also installs the optional `unity-slot-agent` worker. On
-Windows it includes `unity-slot-desktop`, which can move a worker-owned Unity
-window to a configured virtual desktop. Running the slot agent requires a
-machine-local config; ordinary editor commands do not.
-
 ### Update
 
 ```bash
@@ -544,64 +539,20 @@ unity-cli player stop --port 47101 --token host
 unity-cli player kill --pid 12345 --force
 ```
 
-## Warm Validation Slots
+## Worktree Validation
 
-`unity-slot-agent` queues immutable local commits into dedicated Git worktrees
-that keep their Unity `Library` caches. Source worktrees never share branches
-with validation lanes; each lane checks out the requested SHA in detached HEAD.
+Run validation against the Unity Editor that opened the target worktree. Because
+the Editor reads that worktree directly, uncommitted source and asset changes are
+included without a snapshot commit or detached checkout.
 
 ```bash
-# Agent configuration and lane health
-unity-cli slot doctor
-
-# Dirty files are captured with a temporary Git index. The current branch,
-# real index, and worktree are not changed.
-unity-cli --timeout 1200000 slot submit --snapshot --suite compile --affinity task-123 --wait
-
-# An existing local commit can be submitted without pushing it.
-unity-cli slot submit --sha HEAD --suite compile
-unity-cli slot status
+unity-cli --project D:/Projects/MyGame-worktree status
+unity-cli --project D:/Projects/MyGame-worktree editor refresh --compile
+unity-cli --project D:/Projects/MyGame-worktree console --type error
 ```
 
-The repository defines portable suites in `.unity-slot.json`; machine-specific
-worktree, Unity executable, and desktop paths stay in the agent's local config.
-The current transport is machine-local, so the source and validation worktrees
-must share one Git object store.
-
-On a Windows verification host, initialize the worktrees once and register the
-agent for the current user's interactive login session:
-
-```powershell
-unity-slot-agent --repo D:\Projects\MyGame --slot-root C:\UnitySlots --slots 2 `
-  --unity "C:\Program Files\Unity\Hub\Editor\<version>\Editor\Unity.exe" `
-  --unity-cli "$env:LOCALAPPDATA\unity-cli\unity-cli.exe" `
-  --desktop-helper "$env:LOCALAPPDATA\unity-cli\unity-slot-desktop.exe" `
-  --desktop-start 2 init
-unity-slot-agent install
-```
-
-`init` refuses to replace an existing config unless `--force` is explicit.
-`install` uses the current user's login Run key and starts the agent hidden; it
-does not require an administrator-owned Windows service.
-
-For stable Windows placement, a slot can prefer an exact virtual desktop name
-and fall back to a position counted from the end when that name is unavailable:
-
-```json
-{
-  "desktopName": "LLM Unity Slot 1",
-  "desktopFallbackFromEnd": 2
-}
-```
-
-`desktopFallbackFromEnd: 1` means the last desktop and `2` means the
-second-to-last. The legacy zero-based `desktopIndex` remains supported but
-cannot be combined with name/fallback selection. `slot doctor` reports the
-resolved index and whether the name or fallback selected it.
-
-Set `"shutdownWhenIdle": true` on a slot to close its Unity Editor gracefully
-whenever that lane has no claimable validation job. A new job launches the
-Editor again and keeps it alive only while immediately queued work remains.
+Editor launch limits, work ownership, and branch-switch safety are project policy;
+unity-cli does not infer them or terminate another Editor automatically.
 
 ## AI Agent Integration
 
