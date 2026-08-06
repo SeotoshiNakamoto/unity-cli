@@ -43,6 +43,7 @@ Bash/CLI로 Unity Editor를 제어한다. MCP가 아니다. 멀티 Unity 인스�
 - `test`: Unity Test Framework 실행. PlayMode 테스트는 도메인 리로드 뒤 connector port를 다시 찾고 Editor `ready`와 bootstrap scene 삭제까지 기다린 뒤 반환한다.
 - `instances`: Unity 연결 없이 heartbeat를 조회한다. `kill`은 정확한 `--project` 또는 `--port`와 `--force`가 모두 있어야 한다.
 - `mppm`: 플레이어를 바꾸는 action은 모두 메인 에디터에서 호출한다(`list/status`만 어디서든). `--player`/`--all`/`--count`는 정확히 하나만 주고, `activate --all`은 거부된다. `--count`는 activate 전용이며 `--tag`와 함께 못 쓴다(역할은 `--player`로). `--count N`은 최소 N명 보장이라 잉여를 끄지 않는다. 자식은 응답의 `virtualProjectPath`로 지목하고 경로를 조립하지 않는다(한 번 활성화된 플레이어에만 채워지며 port는 재기동마다 바뀐다). 응답은 `data`만 출력되므로 확인할 값은 `note`/`players` 같은 data 필드에서 읽는다.
+- ProjectD 세션 조작·상태 대기는 `projectd_e2e`(`snapshot`/`wait_for`/`create_room`/`join_room`/`leave_session`/`mark_local_player`)를 행동할 인스턴스에 보낸다. `wait_for`는 구조화 predicate로 Unity 안에서 프레임마다 평가하므로 CLI 반복 조회를 대신한다. dispatched는 완료가 아니다.
 - `mppm` 자식 특성: 태그는 식별 메타데이터일 뿐 역할을 부여하지 않는다(자식을 host로 만들려면 자동 진입을 끄고 그 자식에 `CreateRoom`을 보낸다). `activate --tag`는 기존 태그를 교체하고, 태그는 `SystemData.json`에 남아 비활성화 후에도 유지되며 떠 있는 자식은 변경을 즉시 본다. `ScriptAssemblies`·빌드 타겟·`ProjectSettings`를 main과 공유하므로 컴파일은 main에서 한 번이고 자식 전용 초기화가 없다. SceneView가 없고 `-noUpm` UPM 에러는 상시 남으므로 에러 판정에서 제외한다.
 - MPPM E2E 역할 배치: main에는 끝까지 프로세스가 종료·deactivate·재시작되지 않는 참가자를 두고 crash·재시작·former-host는 자식에 배정한다. main이 최종 생존자일 필요는 없다. 활성 시나리오 중 main 종료·PlayMode stop·compile/도메인 리로드가 일어나면 제품 결함으로 세지 말고 시도를 무효 처리한 뒤 처음부터 다시 실행한다.
 - `parrelsync`: 메인 에디터에서만 `list/ensure/open`을 호출한다. 첫 clone 생성은 오래 걸릴 수 있어 `--async` 후 `job` 폴링을 권장한다.
