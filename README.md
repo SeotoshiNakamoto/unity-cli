@@ -337,7 +337,7 @@ unity-cli test --mode PlayMode
 unity-cli test --filter MyTestClass
 ```
 
-Requires the Unity Test Framework package. PlayMode tests trigger a domain reload — the CLI polls for results automatically.
+Requires the Unity Test Framework package. PlayMode tests trigger a domain reload. The CLI follows connector port changes, polls the result, and returns only after the Editor is ready and the framework's `InitTestScene<GUID>` bootstrap assets are gone.
 
 ### List Tools
 

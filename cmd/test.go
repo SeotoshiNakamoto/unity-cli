@@ -8,11 +8,14 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/youngwoocho02/unity-cli/internal/client"
 )
+
+var unityTestBootstrapSceneName = regexp.MustCompile(`(?i)^InitTestScene[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.unity(?:\.meta)?$`)
 
 type suppressWriter struct {
 	w        io.Writer
@@ -63,7 +66,7 @@ func testCmd(args []string, send sendFn, port int) (*client.CommandResponse, err
 	}
 
 	// PlayMode: Unity returns "running", poll results file
-	if resp.Message != "running" {
+	if !playModeRunStarted(resp) {
 		return resp, nil
 	}
 
@@ -75,6 +78,13 @@ func testCmd(args []string, send sendFn, port int) (*client.CommandResponse, err
 	defer log.SetOutput(original)
 
 	return pollTestResults(port)
+}
+
+func playModeRunStarted(resp *client.CommandResponse) bool {
+	if resp == nil || !resp.Success {
+		return false
+	}
+	return resp.Message == "running" || strings.HasPrefix(resp.Message, "run_tests sent (connection closed before response)")
 }
 
 func pollTestResults(port int) (*client.CommandResponse, error) {
@@ -96,6 +106,9 @@ func pollTestResults(port int) (*client.CommandResponse, error) {
 			if err := json.Unmarshal(data, &resp); err != nil {
 				return nil, fmt.Errorf("failed to parse test results: %w", err)
 			}
+			if err := waitForPlayModeCleanup(port); err != nil {
+				return nil, err
+			}
 			return &resp, nil
 		}
 
@@ -110,4 +123,54 @@ func pollTestResults(port int) (*client.CommandResponse, error) {
 	}
 
 	return nil, fmt.Errorf("timed out waiting for test results (10m)")
+}
+
+func waitForPlayModeCleanup(port int) error {
+	return waitForPlayModeCleanupWith(port, 30*time.Second, 100*time.Millisecond, readStatus)
+}
+
+func waitForPlayModeCleanupWith(port int, timeout, pollInterval time.Duration, statusReader func(int) (*client.Instance, error)) error {
+	deadline := time.Now().Add(timeout)
+	var lastState string
+	var lastArtifacts []string
+	var lastErr error
+	for time.Now().Before(deadline) {
+		status, err := statusReader(port)
+		if err != nil {
+			lastErr = err
+		} else {
+			if status.State == "stopped" || unityGone(status) {
+				return fmt.Errorf("unity editor stopped before PlayMode cleanup finished (port %d)", port)
+			}
+			lastState = status.State
+			lastArtifacts, lastErr = playModeBootstrapArtifacts(status.ProjectPath)
+			if lastErr == nil && status.State == "ready" && len(lastArtifacts) == 0 {
+				return nil
+			}
+		}
+		time.Sleep(pollInterval)
+	}
+	if lastErr != nil {
+		return fmt.Errorf("timed out waiting for PlayMode cleanup (port %d): %w", port, lastErr)
+	}
+	return fmt.Errorf("timed out waiting for PlayMode cleanup (port %d, state=%s, artifacts=%s)", port, lastState, strings.Join(lastArtifacts, ", "))
+}
+
+func playModeBootstrapArtifacts(projectPath string) ([]string, error) {
+	if strings.TrimSpace(projectPath) == "" {
+		return nil, fmt.Errorf("unity instance has no project path")
+	}
+	assets := filepath.Join(projectPath, "Assets")
+	entries, err := os.ReadDir(assets)
+	if err != nil {
+		return nil, fmt.Errorf("read Unity Assets directory %s: %w", assets, err)
+	}
+	artifacts := make([]string, 0)
+	for _, entry := range entries {
+		if entry.IsDir() || !unityTestBootstrapSceneName.MatchString(entry.Name()) {
+			continue
+		}
+		artifacts = append(artifacts, entry.Name())
+	}
+	return artifacts, nil
 }

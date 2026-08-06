@@ -337,7 +337,7 @@ unity-cli test --mode PlayMode
 unity-cli test --filter MyTestClass
 ```
 
-Unity Test Framework 패키지가 필요합니다. PlayMode 테스트는 도메인 리로드를 트리거하며, CLI가 자동으로 결과를 폴링합니다.
+Unity Test Framework 패키지가 필요합니다. PlayMode 테스트는 도메인 리로드를 트리거합니다. CLI는 변경된 connector port를 다시 찾고 결과를 폴링한 뒤 Editor `ready`와 프레임워크의 `InitTestScene<GUID>` bootstrap asset 삭제까지 확인하고 반환합니다.
 
 ### 도구 목록
 

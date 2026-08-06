@@ -38,7 +38,7 @@ func primeCmd(project string, port int) error {
 		sb.WriteString(guideContent)
 		sb.WriteString("\n\n")
 	}
-	sb.WriteString("Compiled Development/ReleaseE2E Player: use `player launch/call/wait/stop/kill`; final Shipping builds should omit the bridge. Run `player --help` for the contract.\n\n")
+	sb.WriteString("Compiled Development/Release Player: use `player launch/call/wait/stop/kill`; Distribution builds should omit the bridge. Run `player --help` for the contract.\n\n")
 
 	// 2. Connection status + tool list
 	inst, err := client.DiscoverInstance(project, port)

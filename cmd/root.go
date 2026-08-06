@@ -323,6 +323,9 @@ Multiple Instances:
   instances list [--json]       List live Unity Editors with project, port, and PID
   instances wait --project P    Wait for a project heartbeat (--state ready by default)
   instances kill --project P --force  Force-kill one explicitly selected Editor
+  mppm --action list            List Multiplayer Play Mode players
+  mppm --action activate --player "Player 2"  Start one additional Editor player
+  mppm --action deactivate --all  Stop every additional Editor player
   parrelsync list               List ParrelSync clones from the main Editor
   parrelsync ensure --count 2 --open  Create missing clones and open them
   parrelsync open --all         Open every existing ParrelSync clone
@@ -498,6 +501,51 @@ Examples:
 Use 'editor quit' for normal cleanup. Use 'instances kill --force' only for
 crash simulation or an unresponsive Editor; it bypasses Unity shutdown hooks.
 `)
+	case "mppm":
+		fmt.Print(`Usage: unity-cli mppm --action <list|status|activate|deactivate|tag|untag|clear-tags> [options]
+
+Manage Unity Multiplayer Play Mode (MPPM) additional Editor players through the selected
+main Unity Editor. The connector uses reflection, so editors without MPPM still compile
+and return a clear error. Each additional player is a separate Unity Editor process.
+
+Actions:
+  list, status         Show every player with state, tags, and virtualProjectPath.
+                       Works from any editor, but a clone holds no player registry and
+                       returns an empty list plus an explanatory note.
+                       virtualProjectPath is set only for players that were activated.
+  activate             Start additional players. Requires --player or --count.
+  deactivate           Stop additional players normally. Requires --player or --all.
+  tag, untag           Add or remove one role tag. Requires --player or --all, and --tag.
+  clear-tags           Remove every tag. Requires --player or --all.
+
+Options:
+  --player <name|N>    One player by name ("Player 2") or the 1-based index from list.
+  --count <N>          activate only: ensure AT LEAST N additional players run. Range is
+                       1..(additional players list reports); mppm_count_out_of_range
+                       returns the real ceiling as maxCount. Already running players are
+                       counted, surplus is never stopped, and it cannot be combined with
+                       --tag or --clear_tags.
+  --all                Every additional player. Rejected by activate.
+  --tag <text>         Role tag. With activate it REPLACES the player's tags.
+  --clear_tags         activate only: launch with no tags.
+  --player_args "<a>"  activate only: extra command line arguments for the clone editor,
+                       split on whitespace, so one value cannot contain a space. --args is
+                       the legacy key; a bare positional word on the command line
+                       overwrites it, which is reported as mppm_args_positional.
+
+Examples:
+  unity-cli --project D:/Projects/Game/client mppm --action list
+  unity-cli --project D:/Projects/Game/client mppm --action activate --player "Player 2" --tag host
+  unity-cli --project D:/Projects/Game/client mppm --action activate --count 2
+  unity-cli --project D:/Projects/Game/client mppm --action deactivate --all
+
+Give exactly one of --player, --all or --count; two selectors return
+mppm_selector_conflict instead of one silently winning. Run every action that changes a
+player against the main Editor (otherwise mppm_not_main_editor). Control a started player
+with the virtualProjectPath from the response, not a guessed path, because its connector
+port changes on each restart. Every response carries 'action' and, on failure, 'code',
+'partial', 'requested', 'failed' and a fresh 'players' snapshot.
+`)
 	case "parrelsync":
 		fmt.Print(`Usage: unity-cli parrelsync <list|ensure|open> [options]
 
@@ -524,9 +572,9 @@ creation can take several minutes; add --timeout or --async when appropriate.
 	case "player":
 		fmt.Print(`Usage: unity-cli player <launch|call|wait|stop|kill> [options]
 
-Control a compiled Unity Development or ReleaseE2E Player through its opt-in loopback bridge.
+Control a compiled Unity Development or Release Player through its opt-in loopback bridge.
 The player build must contain a compatible bridge and be launched with a token.
-Final Shipping builds should omit the bridge.
+Distribution builds should omit the bridge.
 
 Subcommands:
   launch
@@ -718,7 +766,8 @@ Options:
                                 Must be the full path (e.g. MyNamespace.MyClass)
 
 EditMode tests hold the connection open and return results directly.
-PlayMode tests return immediately and poll a results file (domain reload safe).
+PlayMode tests poll a results file, follow connector port changes, and return only
+after the Editor is ready and Unity Test Framework bootstrap scenes are removed.
 
 Requires the Unity Test Framework package (com.unity.test-framework).
 

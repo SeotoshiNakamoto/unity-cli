@@ -446,7 +446,7 @@ namespace UnityCliConnector
                     {
                         var agent = agentProp.GetValue(instance) as UnityEngine.Component;
                         if (agent != null && agent.gameObject != null)
-                            return agent.gameObject.name + " [" + agent.gameObject.GetInstanceID() + "]";
+                            return agent.gameObject.name + " [" + InstanceIdOf(agent.gameObject) + "]";
                         break;
                     }
                     current = current.BaseType;
@@ -454,11 +454,11 @@ namespace UnityCliConnector
 
                 // 2) If it's a Component → gameObject.name
                 if (instance is UnityEngine.Component comp && comp.gameObject != null)
-                    return comp.gameObject.name + " [" + comp.gameObject.GetInstanceID() + "]";
+                    return comp.gameObject.name + " [" + InstanceIdOf(comp.gameObject) + "]";
 
                 // 3) If it's a GameObject
                 if (instance is UnityEngine.GameObject go)
-                    return go.name + " [" + go.GetInstanceID() + "]";
+                    return go.name + " [" + InstanceIdOf(go) + "]";
 
                 // 4) Fallback
                 return SafeToString(instance);
@@ -467,6 +467,17 @@ namespace UnityCliConnector
             {
                 return SafeToString(instance);
             }
+        }
+
+        // Unity 6.5 made Object.GetInstanceID() a hard obsolete (CS0619), so it can no
+        // longer be called directly. GetEntityId() replaces it from 6.5 onward.
+        static string InstanceIdOf(UnityEngine.Object obj)
+        {
+#if UNITY_6000_5_OR_NEWER
+            return obj.GetEntityId().ToString();
+#else
+            return obj.GetInstanceID().ToString();
+#endif
         }
 
         static string SafeToString(object obj)
