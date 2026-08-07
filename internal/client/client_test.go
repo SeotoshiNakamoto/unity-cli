@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -335,6 +336,29 @@ func TestDiscoverInstance_ExactPathDoesNotSelectClonePrefix(t *testing.T) {
 	}
 	if got.Port != 8091 {
 		t.Fatalf("Port: got %d, want 8091", got.Port)
+	}
+}
+
+func TestFindByProject_UnmatchedAbsolutePathDoesNotFallbackByDirectoryName(t *testing.T) {
+	stubIsProcessDead(t, map[int]bool{})
+
+	home := writeInstanceFiles(t, map[string]Instance{
+		"main.json": {
+			State:       "ready",
+			ProjectPath: "D:/Projects/ProjectD/client",
+			Port:        8090,
+			PID:         100,
+			Timestamp:   1000,
+		},
+	})
+	t.Setenv("HOME", home)
+
+	_, err := FindByProject("D:/Projects/ProjectD-agent-02/client")
+	if err == nil {
+		t.Fatal("expected unmatched absolute project path to fail")
+	}
+	if !strings.Contains(err.Error(), "ProjectD-agent-02/client") {
+		t.Fatalf("error does not identify requested project: %v", err)
 	}
 }
 

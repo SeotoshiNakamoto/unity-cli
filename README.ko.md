@@ -374,7 +374,7 @@ unity-cli status
 | 플래그 | 설명 | 기본값 |
 |--------|------|--------|
 | `--port <N>` | Unity 인스턴스 포트 직접 지정 (자동 탐지 건너뜀) | auto |
-| `--project <path>` | canonical 경로 완전일치 또는 모호하지 않은 이름/접미사로 선택 | latest |
+| `--project <path>` | 절대 경로는 완전일치만 허용. 상대 이름/접미사는 모호하지 않을 때만 선택 | latest |
 | `--timeout <ms>` | HTTP 요청 타임아웃 | 120000 |
 
 ```bash

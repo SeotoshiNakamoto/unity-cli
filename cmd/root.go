@@ -440,7 +440,7 @@ Update:
 
 Global Options:
   --port <N>          Connect to specific Unity port (skip auto-discovery)
-  --project <path>    Select Unity instance by project path
+  --project <path>    Exact absolute project path, or unique relative name/suffix
   --timeout <ms>      Request timeout in ms (default: 120000)
 
 Use "unity-cli <command> --help" for more information about a command.
@@ -485,7 +485,7 @@ Subcommands:
     --json            Print machine-readable JSON.
     --all             Include stopped heartbeat entries.
   wait                Wait for an explicitly selected instance.
-    --project <path>  Select by canonical project path (global option).
+    --project <path>  Select by exact canonical project path (global option).
     --port <N>        Select by connector port (global option).
     --state <state>   Desired heartbeat state (default: ready; use any for any live state).
     --timeout <ms>    Wait timeout (global option, default: 120000).

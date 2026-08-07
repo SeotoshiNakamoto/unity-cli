@@ -155,8 +155,8 @@ func FindActiveByPort(port int) (*Instance, error) {
 }
 
 // FindByProject selects an active instance by project path.
-// A canonical absolute path is matched exactly first. For convenience, a unique
-// project directory name or path suffix is accepted, but ambiguous matches fail.
+// Absolute paths are strict selectors and never fall back to another project.
+// For convenience, a unique relative directory name or path suffix is accepted.
 func FindByProject(project string) (*Instance, error) {
 	alive, err := ActiveInstances()
 	if err != nil {
@@ -176,6 +176,9 @@ func FindByProject(project string) (*Instance, error) {
 	if len(exact) > 0 {
 		return newestInstance(exact), nil
 	}
+	if isAbsoluteProjectPath(project) {
+		return nil, fmt.Errorf("no Unity instance found for project: %s\nRunning projects:\n%s", project, formatInstancePaths(alive))
+	}
 
 	querySuffix := strings.Trim(strings.ToLower(filepath.ToSlash(filepath.Clean(project))), "/")
 	var suffix []Instance
@@ -194,6 +197,19 @@ func FindByProject(project string) (*Instance, error) {
 	}
 
 	return nil, fmt.Errorf("no Unity instance found for project: %s\nRunning projects:\n%s", project, formatInstancePaths(alive))
+}
+
+func isAbsoluteProjectPath(path string) bool {
+	if filepath.IsAbs(path) {
+		return true
+	}
+	// Keep Windows drive and UNC paths strict when tests or clients run on
+	// another OS but select a Windows-hosted Unity project.
+	if len(path) >= 3 && ((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) &&
+		path[1] == ':' && (path[2] == '/' || path[2] == '\\') {
+		return true
+	}
+	return strings.HasPrefix(path, `\\`) || strings.HasPrefix(path, "//")
 }
 
 func normalizeProjectPath(path string) string {
@@ -245,7 +261,8 @@ func KillProcess(pid int) error {
 
 // DiscoverInstance finds a running Unity instance from ~/.unity-cli/instances/.
 // If port > 0, skips discovery and connects directly.
-// If project is set, uses exact canonical matching with an unambiguous suffix fallback.
+// If project is set, absolute paths match exactly; relative names/suffixes may
+// use the unambiguous convenience fallback.
 // Otherwise returns the most recently active instance.
 func DiscoverInstance(project string, port int) (*Instance, error) {
 	if port > 0 {

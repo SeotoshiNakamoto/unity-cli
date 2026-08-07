@@ -44,7 +44,12 @@ func primeCmd(project string, port int) error {
 	inst, err := client.DiscoverInstance(project, port)
 	if err != nil {
 		sb.WriteString("## 연결 상태\n")
-		sb.WriteString("Unity not available (에디터가 이 프로젝트를 열고 있지 않음)\n")
+		if project != "" {
+			fmt.Fprintf(&sb, "Requested Project: %s\n", project)
+			sb.WriteString("Target Editor: not running (다른 Editor로 fallback하지 않음)\n")
+		} else {
+			sb.WriteString("Unity not available (실행 중인 Editor 없음)\n")
+		}
 		fmt.Print(sb.String())
 		return nil
 	}

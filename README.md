@@ -374,7 +374,7 @@ The CLI also checks Unity's state automatically before sending any command. If U
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--port <N>` | Override Unity instance port (skip auto-discovery) | auto |
-| `--project <path>` | Select by exact canonical path, or an unambiguous name/suffix | latest |
+| `--project <path>` | Absolute paths require an exact match; relative names/suffixes must be unambiguous | latest |
 | `--timeout <ms>` | HTTP request timeout | 120000 |
 
 ```bash
