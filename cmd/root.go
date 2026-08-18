@@ -113,6 +113,9 @@ func Execute() error {
 		var params map[string]interface{}
 		params, err = buildParams(subArgs, nil)
 		if err == nil {
+			err = validateExecDeferredPolicy(params)
+		}
+		if err == nil {
 			resp, err = send("exec", params)
 		}
 	case "trace":
@@ -350,7 +353,8 @@ Execute C#:
   exec --file <path>            Run C# code from a file (no escaping needed)
   echo '<code>' | exec          Pipe code via stdin (avoids shell escaping)
   exec "<code>" --usings x,y    Add extra using directives
-  exec "<code>" --async          Fire-and-forget, returns job_id immediately
+  exec "<code>" --async         Run the whole command as a pollable background job
+  exec "<code>" --allow-deferred-code  Permit callbacks/tasks that outlive the request
 
   Examples:
     exec "Time.time"
@@ -646,6 +650,7 @@ Options:
   --csc <path>         Path to csc compiler (csc.dll or csc.exe). Auto-detected if omitted.
   --dotnet <path>      Path to dotnet runtime. Auto-detected if omitted.
   --async              Fire-and-forget: return job_id immediately, poll with 'job' command
+  --allow-deferred-code  Allow C# callbacks/tasks that can outlive the exec request
 
 Default usings: System, System.Collections.Generic, System.IO, System.Linq,
   System.Reflection, System.Threading.Tasks, UnityEngine,
@@ -662,6 +667,8 @@ Examples:
 Notes:
   - --file is recommended for complex code (avoids shell escaping)
   - Pipe code via stdin: echo '<code>' | unity-cli exec [--usings ns1,ns2]
+  - Deferred callbacks, coroutines, and async APIs are blocked by default because they can outlive the request.
+    --async changes CLI transport only; use --allow-deferred-code for an intentional deferred C# lifetime.
   - Use 'return' for output, 'return null;' for void operations
 `)
 	case "job":

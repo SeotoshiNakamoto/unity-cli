@@ -136,8 +136,9 @@ The Unity Connector:
 4. Discovers all `[UnityCliTool]` classes via reflection on each request
 5. Routes incoming commands to the matching handler on the main thread
 6. Survives domain reloads (script recompilation)
+7. Wakes a throttled Editor when commands arrive and restarts a failed listener automatically
 
-Before compiling or reloading, the Connector records the state (`compiling`, `reloading`) to the instance file. When the main thread freezes, the timestamp stops updating. The CLI detects this and waits for a fresh timestamp before sending commands.
+Before compiling or reloading, the Connector records the state (`compiling`, `reloading`) to the instance file. The heartbeat also records the Connector version and listener state. Readiness probes use a lightweight `GET /health` endpoint that does not wait for Unity's main-thread command queue. If the listener exits unexpectedly, the Connector retries it automatically without changing project selection semantics.
 
 ## Built-in Commands
 
@@ -216,9 +217,17 @@ unity-cli exec "return World.All.Count;" --usings Unity.Entities
 # Pipe via stdin to avoid shell escaping issues
 echo 'Debug.Log("hello"); return null;' | unity-cli exec
 echo 'var go = new GameObject("Marker"); go.tag = "EditorOnly"; return go.name;' | unity-cli exec
+
+# The whole synchronous script can run as a pollable job
+unity-cli exec --file long-running.cs --async
+
+# Deferred callbacks require an explicit lifetime override
+unity-cli exec "EditorApplication.delayCall += RunLater; return null;" --allow-deferred-code
 ```
 
 Because `exec` compiles and runs real C#, it can do anything a custom tool can — inspect ECS entities, modify assets, call internal APIs, run editor utilities. For AI agents, this means **zero-friction access to Unity's entire runtime** without writing a single line of tool code. Piping via stdin avoids shell escaping headaches with complex code.
+
+Code that can outlive the request (`async`/`await`, tasks, coroutines, Unity async operations, or `EditorApplication` deferred callbacks) is blocked by default. `--async` only moves the complete CLI command into a pollable job; it does not make detached C# callbacks safe. Use `--allow-deferred-code` only when that lifetime is intentional and cleanup is handled explicitly.
 
 ### Menu Items
 

@@ -10,6 +10,7 @@ Bash/CLI로 Unity Editor를 제어한다. MCP가 아니다. 멀티 Unity 인스�
 - 복잡한 C# `exec`는 인라인 문자열 대신 `--file d:/tmp/query.cs`를 사용한다. 프로젝트 폴더 안에 임시 스크립트를 만들지 않는다.
 - 임시 스크립트, 스크린샷, 로그 덤프는 `d:/tmp/` 아래에 둔다. 스크린샷 기본 경로는 `d:/tmp/screenshot.png`로 덮어쓴다.
 - 120초 초과 예상 작업은 `--async`로 실행하고 `job <job_id>`로 폴링한다. job 결과는 1회 조회 후 삭제된다.
+- `exec --async`는 명령 전체를 job으로 실행할 뿐 C# callback 수명을 연장하지 않는다. `async`/Coroutine/`delayCall` 등 요청 뒤에 남는 코드는 기본 차단되며, 수명과 정리를 직접 책임질 때만 `--allow-deferred-code`를 사용한다.
 - 에셋/SO 수정 후에는 `AssetDatabase.SaveAssets()`를 호출한다. 필요하면 `reserialize` 또는 에디터 refresh/console 확인까지 한다.
 - 콘솔/컴파일 확인 때문에 `Assets/Reimport All` 또는 `AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate)`를 쓰지 않는다. `editor refresh` 후 `console --type error`만 사용한다.
 - `trace` 훅은 도메인 리로드/스크립트 리컴파일 시 사라진다. 리컴파일 후에는 다시 등록한다.
@@ -34,7 +35,7 @@ Bash/CLI로 Unity Editor를 제어한다. MCP가 아니다. 멀티 Unity 인스�
 
 ## Essential Command Notes
 
-- `exec`: Unity 메인 스레드에서 C# 실행. UnityEngine, UnityEditor, 로드된 어셈블리에 접근 가능. `Object`가 모호하면 `UnityEngine.Object`를 명시한다.
+- `exec`: Unity 메인 스레드에서 C# 실행. UnityEngine, UnityEditor, 로드된 어셈블리에 접근 가능. `Object`가 모호하면 `UnityEngine.Object`를 명시한다. 지연 callback/API는 기본 차단되며 `--async`와 `--allow-deferred-code`는 서로 다른 옵션이다.
 - `console`: 기본은 에러/경고 확인. 컴파일 에러는 `editor refresh` 뒤 `console --type error`로 본다.
 - `screenshot`: 항상 `d:/tmp/screenshot.png`에 덮어쓰고 이미지 read 도구로 확인한다. 특정 창은 `screenshot --action list_windows` 후 window 캡처를 사용한다.
 - `ui`: 게임 UI만 볼 때는 `--runtime`을 붙인다. `--interactive`는 Button/TextField/Label 중심으로 레이아웃 노이즈를 줄인다.
@@ -42,7 +43,7 @@ Bash/CLI로 Unity Editor를 제어한다. MCP가 아니다. 멀티 Unity 인스�
 - `profiler`: 성능 분석이 필요할 때만 사용하고, 옵션은 먼저 `profiler --help`로 확인한다.
 - `reserialize`: YAML 에셋을 텍스트 수정한 뒤 Unity serializer로 다시 저장할 때 사용한다.
 - `test`: Unity Test Framework 실행. PlayMode 테스트는 도메인 리로드 뒤 connector port를 다시 찾고 Editor `ready`와 bootstrap scene 삭제까지 기다린 뒤 반환한다.
-- `instances`: Unity 연결 없이 heartbeat를 조회한다. `kill`은 정확한 `--project` 또는 `--port`와 `--force`가 모두 있어야 한다.
+- `instances`: Unity 연결 없이 heartbeat를 조회한다. heartbeat에는 Connector 버전/listener 상태가 포함되고, CLI readiness 확인은 메인 스레드와 독립적인 `/health`를 쓴다. `kill`은 정확한 `--project` 또는 `--port`와 `--force`가 모두 있어야 한다.
 - `mppm`: 플레이어를 바꾸는 action은 모두 메인 에디터에서 호출한다(`list/status`만 어디서든). `--player`/`--all`/`--count`는 정확히 하나만 주고, `activate --all`은 거부된다. `--count`는 activate 전용이며 `--tag`와 함께 못 쓴다(역할은 `--player`로). `--count N`은 최소 N명 보장이라 잉여를 끄지 않는다. 자식은 응답의 `virtualProjectPath`로 지목하고 경로를 조립하지 않는다(한 번 활성화된 플레이어에만 채워지며 port는 재기동마다 바뀐다). 응답은 `data`만 출력되므로 확인할 값은 `note`/`players` 같은 data 필드에서 읽는다.
 - ProjectD 세션 조작·상태 대기는 `projectd_e2e`(`snapshot`/`wait_for`/`create_room`/`join_room`/`leave_session`/`mark_local_player`)를 행동할 인스턴스에 보낸다. `wait_for`는 구조화 predicate로 Unity 안에서 프레임마다 평가하므로 CLI 반복 조회를 대신한다. dispatched는 완료가 아니다.
 - `mppm` 자식 특성: 태그는 식별 메타데이터일 뿐 역할을 부여하지 않는다(자식을 host로 만들려면 자동 진입을 끄고 그 자식에 `CreateRoom`을 보낸다). `activate --tag`는 기존 태그를 교체하고, 태그는 `SystemData.json`에 남아 비활성화 후에도 유지되며 떠 있는 자식은 변경을 즉시 본다. `ScriptAssemblies`·빌드 타겟·`ProjectSettings`를 main과 공유하므로 컴파일은 main에서 한 번이고 자식 전용 초기화가 없다. SceneView가 없고 `-noUpm` UPM 에러는 상시 남으므로 에러 판정에서 제외한다.

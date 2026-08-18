@@ -23,6 +23,16 @@ func statusCmd(inst *client.Instance) error {
 	fmt.Printf("Unity (port %d): %s\n", status.Port, status.State)
 	fmt.Printf("  Project: %s\n", status.ProjectPath)
 	fmt.Printf("  Version: %s\n", status.UnityVersion)
+	if status.ConnectorVersion != "" {
+		fmt.Printf("  Connector: %s\n", status.ConnectorVersion)
+		if !status.ConnectorListening {
+			fmt.Printf("  Connector listener: unavailable")
+			if status.ConnectorError != "" {
+				fmt.Printf(" (%s)", status.ConnectorError)
+			}
+			fmt.Println()
+		}
+	}
 	fmt.Printf("  PID:     %d\n", status.PID)
 	return nil
 }
@@ -96,8 +106,15 @@ func waitForAliveWithProbe(inst *client.Instance, project string, explicitPort i
 }
 
 func unityHTTPReachable(instance *client.Instance) bool {
-	_, err := client.Send(instance, "list", nil, 1000)
-	return err == nil
+	resp, err := client.Health(instance, 1000)
+	if err == nil {
+		return resp.Success
+	}
+
+	// Connector versions before /health existed still need to remain usable
+	// during a CLI-first upgrade. Fall back to a lightweight tool command.
+	resp, err = client.Send(instance, "list", nil, 1000)
+	return err == nil && resp.Success
 }
 
 const (

@@ -135,9 +135,10 @@ Unity 커넥터의 동작:
 3. 0.5초마다 instance 파일에 현재 상태를 갱신하고 (heartbeat)
 4. 매 요청마다 리플렉션으로 `[UnityCliTool]` 클래스를 탐지하고
 5. 수신된 명령을 메인 스레드의 해당 핸들러로 라우팅하고
-6. 도메인 리로드(스크립트 재컴파일)에서도 유지됩니다
+6. 도메인 리로드(스크립트 재컴파일)에서도 유지되고
+7. 명령 도착 시 쓰로틀된 Editor를 깨우며 listener 장애를 자동 복구합니다
 
-컴파일이나 리로드 직전에 상태(`compiling`, `reloading`)를 instance 파일에 기록합니다. 메인 스레드가 멈추면 timestamp 갱신이 중단되고, CLI는 새로운 timestamp가 찍힐 때까지 대기한 후 명령을 전송합니다.
+컴파일이나 리로드 직전에 상태(`compiling`, `reloading`)를 instance 파일에 기록합니다. heartbeat에는 Connector 버전과 listener 상태도 포함됩니다. readiness 확인은 Unity 메인 스레드 명령 큐를 기다리지 않는 가벼운 `GET /health` endpoint를 사용합니다. listener가 비정상 종료되면 프로젝트 선택 규칙을 바꾸지 않고 자동 재시도합니다.
 
 ## 내장 명령어
 
@@ -216,9 +217,17 @@ unity-cli exec "return World.All.Count;" --usings Unity.Entities
 # stdin으로 파이프하면 shell escaping 문제 없음
 echo 'Debug.Log("hello"); return null;' | unity-cli exec
 echo 'var go = new GameObject("Marker"); go.tag = "EditorOnly"; return go.name;' | unity-cli exec
+
+# 동기 스크립트 전체를 polling 가능한 job으로 실행
+unity-cli exec --file long-running.cs --async
+
+# 지연 callback은 명시적인 수명 예외가 필요
+unity-cli exec "EditorApplication.delayCall += RunLater; return null;" --allow-deferred-code
 ```
 
 `exec`는 실제 C#을 컴파일하고 실행하므로, 커스텀 도구가 할 수 있는 모든 것을 할 수 있습니다 — ECS 엔티티 조사, 에셋 수정, 내부 API 호출, 에디터 유틸리티 실행. AI 에이전트에게 이것은 **도구 코드를 한 줄도 작성하지 않고 Unity 전체 런타임에 즉시 접근**할 수 있다는 의미입니다. stdin 파이프를 사용하면 복잡한 코드에서 shell escaping 문제를 피할 수 있습니다.
+
+요청보다 오래 살아남을 수 있는 코드(`async`/`await`, task, coroutine, Unity async operation, `EditorApplication` 지연 callback)는 기본 차단됩니다. `--async`는 CLI 명령 전체를 polling 가능한 job으로 옮길 뿐 분리된 C# callback을 안전하게 만들지 않습니다. 해당 수명과 정리를 의도적으로 책임질 때만 `--allow-deferred-code`를 사용하세요.
 
 ### 메뉴 아이템
 

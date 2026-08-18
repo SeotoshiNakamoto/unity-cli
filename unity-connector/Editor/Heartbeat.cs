@@ -94,6 +94,9 @@ namespace UnityCliConnector
                 port = HttpServer.Port,
                 pid = System.Diagnostics.Process.GetCurrentProcess().Id,
                 unityVersion = Application.unityVersion,
+                connectorVersion = HttpServer.ConnectorVersion,
+                connectorListening = HttpServer.IsRunning,
+                connectorError = HttpServer.LastFailure,
                 timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                 compileErrors = EditorUtility.scriptCompilationFailed,
             };

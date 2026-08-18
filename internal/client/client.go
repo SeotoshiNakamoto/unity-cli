@@ -15,13 +15,16 @@ import (
 
 // Instance represents a running Unity Editor discovered from ~/.unity-cli/instances/.
 type Instance struct {
-	State         string `json:"state"`
-	ProjectPath   string `json:"projectPath"`
-	Port          int    `json:"port"`
-	PID           int    `json:"pid"`
-	UnityVersion  string `json:"unityVersion,omitempty"`
-	Timestamp     int64  `json:"timestamp,omitempty"`
-	CompileErrors bool   `json:"compileErrors,omitempty"`
+	State              string `json:"state"`
+	ProjectPath        string `json:"projectPath"`
+	Port               int    `json:"port"`
+	PID                int    `json:"pid"`
+	UnityVersion       string `json:"unityVersion,omitempty"`
+	ConnectorVersion   string `json:"connectorVersion,omitempty"`
+	ConnectorListening bool   `json:"connectorListening,omitempty"`
+	ConnectorError     string `json:"connectorError,omitempty"`
+	Timestamp          int64  `json:"timestamp,omitempty"`
+	CompileErrors      bool   `json:"compileErrors,omitempty"`
 }
 
 // CommandRequest is the JSON body sent to Unity's HTTP server.
@@ -320,6 +323,22 @@ func Send(inst *Instance, command string, params interface{}, timeoutMs int) (*C
 	if err != nil {
 		return nil, fmt.Errorf("cannot connect to Unity at port %d: %v", inst.Port, err)
 	}
+	return decodeResponse(resp, command, true)
+}
+
+// Health checks the connector listener without dispatching work to Unity's
+// main thread. It remains responsive while the Editor update loop is busy.
+func Health(inst *Instance, timeoutMs int) (*CommandResponse, error) {
+	url := fmt.Sprintf("http://127.0.0.1:%d/health", inst.Port)
+	httpClient := &http.Client{Timeout: time.Duration(timeoutMs) * time.Millisecond}
+	resp, err := httpClient.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("cannot connect to Unity health endpoint at port %d: %v", inst.Port, err)
+	}
+	return decodeResponse(resp, "health", false)
+}
+
+func decodeResponse(resp *http.Response, operation string, allowEmpty bool) (*CommandResponse, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
@@ -328,16 +347,22 @@ func Send(inst *Instance, command string, params interface{}, timeoutMs int) (*C
 		if len(body) > 0 {
 			return nil, fmt.Errorf("HTTP %d from Unity: %s", resp.StatusCode, string(body))
 		}
-		return nil, fmt.Errorf("HTTP %d from Unity (command: %s)", resp.StatusCode, command)
+		return nil, fmt.Errorf("HTTP %d from Unity (operation: %s)", resp.StatusCode, operation)
 	}
 
 	respBody, err := io.ReadAll(resp.Body)
-	if err != nil || len(respBody) == 0 {
+	if err != nil {
+		return nil, fmt.Errorf("cannot read Unity %s response: %w", operation, err)
+	}
+	if len(respBody) == 0 && allowEmpty {
 		// Some commands (e.g. play mode entry) close the connection before responding.
 		return &CommandResponse{
 			Success: true,
-			Message: fmt.Sprintf("%s sent (connection closed before response)", command),
+			Message: fmt.Sprintf("%s sent (connection closed before response)", operation),
 		}, nil
+	}
+	if len(respBody) == 0 {
+		return nil, fmt.Errorf("empty response from Unity %s endpoint", operation)
 	}
 
 	var result CommandResponse

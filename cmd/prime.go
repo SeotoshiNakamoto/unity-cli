@@ -38,7 +38,7 @@ func primeCmd(project string, port int) error {
 		sb.WriteString(guideContent)
 		sb.WriteString("\n\n")
 	}
-	sb.WriteString("Compiled Development/Release Player: use `player launch/call/wait/stop/kill`; Distribution builds should omit the bridge. Run `player --help` for the contract.\n\n")
+	sb.WriteString("Compiled Development/Release Player: use `player launch/call/wait/stop/kill`; Distribution builds should omit the bridge. Run `player --help` for the contract. `exec --async` makes the whole CLI command pollable; deferred C# callbacks remain blocked unless `--allow-deferred-code` is explicit.\n\n")
 
 	// 2. Connection status + tool list
 	inst, err := client.DiscoverInstance(project, port)
