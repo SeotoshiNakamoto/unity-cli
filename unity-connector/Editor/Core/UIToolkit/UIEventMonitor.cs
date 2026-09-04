@@ -24,8 +24,8 @@ namespace UnityCliConnector.UIToolkit
         }
 
         // Instance ID distinguishes replacement documents that reuse the same GameObject name.
-        static Dictionary<int, DocumentFingerprint> s_LastFingerprint =
-            new Dictionary<int, DocumentFingerprint>();
+        static Dictionary<ulong, DocumentFingerprint> s_LastFingerprint =
+            new Dictionary<ulong, DocumentFingerprint>();
         static bool s_HasBaseline;
         static double s_LastCheck;
         static double s_ExpiresAt;
@@ -94,7 +94,7 @@ namespace UnityCliConnector.UIToolkit
         {
             s_LastFingerprint = captureCurrent && EditorApplication.isPlaying
                 ? BuildFingerprint()
-                : new Dictionary<int, DocumentFingerprint>();
+                : new Dictionary<ulong, DocumentFingerprint>();
             s_HasBaseline = captureCurrent && EditorApplication.isPlaying;
             s_LastCheck = EditorApplication.timeSinceStartup;
         }
@@ -152,9 +152,9 @@ namespace UnityCliConnector.UIToolkit
                 AppendEvents(events);
         }
 
-        static Dictionary<int, DocumentFingerprint> BuildFingerprint()
+        static Dictionary<ulong, DocumentFingerprint> BuildFingerprint()
         {
-            var fp = new Dictionary<int, DocumentFingerprint>();
+            var fp = new Dictionary<ulong, DocumentFingerprint>();
 
 #if UNITY_2023_1_OR_NEWER
             var documents = UnityEngine.Object.FindObjectsByType<UIDocument>(FindObjectsSortMode.None);
@@ -167,7 +167,7 @@ namespace UnityCliConnector.UIToolkit
                 if (doc == null || !doc.gameObject.activeInHierarchy) continue;
                 var root = doc.rootVisualElement;
                 int childCount = root != null ? root.childCount : 0;
-                var instanceId = doc.GetInstanceID();
+                var instanceId = GetDocumentId(doc);
                 fp[instanceId] = new DocumentFingerprint
                 {
                     Name = doc.gameObject.name,
@@ -178,7 +178,16 @@ namespace UnityCliConnector.UIToolkit
             return fp;
         }
 
-        static string FormatEvent(string type, string name, int instanceId, int elementCount)
+        static ulong GetDocumentId(UIDocument document)
+        {
+#if UNITY_6000_5_OR_NEWER
+            return EntityId.ToULong(document.GetEntityId());
+#else
+            return unchecked((ulong)(uint)document.GetInstanceID());
+#endif
+        }
+
+        static string FormatEvent(string type, string name, ulong instanceId, int elementCount)
         {
             var ts = DateTime.Now.ToString("o");
             // Manual JSON — avoid allocating JObject for a small status line
