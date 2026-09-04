@@ -14,7 +14,11 @@ func uiCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 
 	action := args[0]
 	rest := args[1:]
-	flags := parseSubFlags(rest)
+	flags, positionalArgs, err := parseUIArgs(rest)
+	if err != nil {
+		return nil, err
+	}
+	positional := strings.Join(positionalArgs, " ")
 
 	params := map[string]interface{}{"action": action}
 
@@ -49,7 +53,7 @@ func uiCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 		}
 
 	case "query":
-		selector := extractPositional(rest)
+		selector := positional
 		if selector == "" {
 			return nil, fmt.Errorf("usage: unity-cli ui query <selector> [--window <name>]")
 		}
@@ -57,7 +61,7 @@ func uiCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 		setStr(flags, params, "window", "window")
 
 	case "click":
-		selector := extractPositional(rest)
+		selector := positional
 		if selector == "" {
 			return nil, fmt.Errorf("usage: unity-cli ui click <selector> [--window <name>]")
 		}
@@ -67,7 +71,6 @@ func uiCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 	case "type":
 		// ui type <selector> <text> [--window <name>]
 		// selector and text are positional: everything before the last token is selector, last is text
-		positional := extractPositional(rest)
 		selector, text := splitSelectorText(positional)
 		if selector == "" || text == "" {
 			return nil, fmt.Errorf("usage: unity-cli ui type <selector> <text> [--window <name>]\nExample: unity-cli ui type \"id=input-name\" \"PlayerOne\"")
@@ -77,13 +80,64 @@ func uiCmd(args []string, send sendFn) (*client.CommandResponse, error) {
 		setStr(flags, params, "window", "window")
 
 	case "events":
-		// no extra params
+		eventAction := positional
+		if eventAction == "" {
+			eventAction = "read"
+		}
+		switch eventAction {
+		case "read", "start", "stop", "status":
+			params["event_action"] = eventAction
+		default:
+			return nil, fmt.Errorf("usage: unity-cli ui events [read|start|stop|status]")
+		}
 
 	default:
 		return nil, fmt.Errorf("unknown ui action: %s\nAvailable: snapshot, tree, query, click, type, events", action)
 	}
 
 	return send("ui_snapshot", params)
+}
+
+func parseUIArgs(args []string) (map[string]string, []string, error) {
+	valueFlags := map[string]bool{
+		"window": true,
+		"output": true,
+		"depth":  true,
+		"filter": true,
+	}
+	booleanFlags := map[string]bool{
+		"runtime":       true,
+		"editor":        true,
+		"visible-only":  true,
+		"no-screenshot": true,
+		"interactive":   true,
+	}
+
+	flags := map[string]string{}
+	var positional []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if !strings.HasPrefix(arg, "--") {
+			positional = append(positional, arg)
+			continue
+		}
+
+		name := strings.TrimPrefix(arg, "--")
+		if booleanFlags[name] {
+			flags[name] = "true"
+			continue
+		}
+		if !valueFlags[name] {
+			return nil, nil, fmt.Errorf("unknown ui option: --%s", name)
+		}
+		if i+1 >= len(args) || strings.HasPrefix(args[i+1], "--") {
+			return nil, nil, fmt.Errorf("ui option --%s requires a value", name)
+		}
+		flags[name] = args[i+1]
+		i++
+	}
+
+	return flags, positional, nil
 }
 
 // splitSelectorText splits "id=input-name PlayerOne" into selector "id=input-name" and text "PlayerOne".
@@ -99,21 +153,4 @@ func splitSelectorText(positional string) (selector, text string) {
 		}
 	}
 	return strings.Join(selParts, " "), strings.Join(textParts, " ")
-}
-
-// extractPositional collects non-flag tokens and joins them with spaces.
-// Selectors like "label=Save type=Button" are multi-word.
-func extractPositional(args []string) string {
-	var parts []string
-	for i := 0; i < len(args); i++ {
-		if strings.HasPrefix(args[i], "--") {
-			// skip flag name + its value (if next arg is not another flag)
-			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "--") {
-				i++
-			}
-			continue
-		}
-		parts = append(parts, args[i])
-	}
-	return strings.Join(parts, " ")
 }

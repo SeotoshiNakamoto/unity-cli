@@ -154,6 +154,7 @@ Before compiling or reloading, the Connector records the state (`compiling`, `re
 | `menu` | Execute any Unity menu item by path |
 | `reserialize` | Re-serialize assets through Unity's serializer |
 | `screenshot` | Capture scene/game view as PNG |
+| `ui` | Observe and interact with UIToolkit UI; opt-in screen-change monitoring |
 | `profiler` | Read profiler hierarchy, control recording |
 | `list` | Show all available tools with parameter schemas |
 | `status` | Show Unity Editor connection state |
@@ -330,6 +331,25 @@ unity-cli profiler status
 # Clear captured frames
 unity-cli profiler clear
 ```
+
+### UIToolkit UI
+
+Inspect and interact with runtime or Editor UIToolkit elements. A click or type command returns an immediate before/after diff. For asynchronous screen transitions, monitoring is opt-in so unused UI tooling adds no per-frame scan.
+
+```bash
+# Inspect runtime UI in Play Mode
+unity-cli ui tree --runtime --interactive
+
+# Monitor a sequence that may add or remove UIDocuments
+unity-cli ui events start
+unity-cli ui click --runtime "id=start-button"
+unity-cli ui events                 # read and clear pending events
+unity-cli ui events status
+unity-cli ui events stop
+```
+
+`ui events` is an alias for `ui events read`; reading does not start monitoring. `start` clears stale events and captures the current UI as its baseline. Monitoring automatically stops after five minutes, on Play Mode exit, or on domain reload.
+
 
 ### Run Tests
 

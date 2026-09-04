@@ -3,13 +3,16 @@ using UnityCliConnector.UIToolkit;
 
 namespace UnityCliConnector.Tools
 {
-    [UnityCliTool(Name = "ui_snapshot", Description = "UIToolkit UI observation and interaction. Actions: snapshot, tree, query, click.")]
+    [UnityCliTool(Name = "ui_snapshot", Description = "UIToolkit UI observation and interaction. Actions: snapshot, tree, query, click, type, events.")]
     public static class UISnapshot
     {
         public class Parameters
         {
-            [ToolParameter("Action: snapshot (default), tree, query, click", Required = false)]
+            [ToolParameter("Action: snapshot (default), tree, query, click, type, events", Required = false)]
             public string Action { get; set; }
+
+            [ToolParameter("Events action: read (default), start, stop, status", Required = false)]
+            public string EventAction { get; set; }
 
             [ToolParameter("Target window name or type (substring match)", Required = false)]
             public string Window { get; set; }
@@ -65,7 +68,7 @@ namespace UnityCliConnector.Tools
                 case "query":   return DoQuery(p);
                 case "click":   return DoClick(p);
                 case "type":    return DoType(p);
-                case "events":  return DoEvents();
+                case "events":  return DoEvents(p);
                 default:
                     return new ErrorResponse($"Unknown action '{action}'. Valid: snapshot, tree, query, click, type, events.");
             }
@@ -347,7 +350,36 @@ namespace UnityCliConnector.Tools
             return new ErrorResponse($"No element matching '{selectorStr}' found.");
         }
 
-        static object DoEvents()
+        static object DoEvents(ToolParams p)
+        {
+            var eventAction = p.Get("event_action", "read").ToLowerInvariant();
+            switch (eventAction)
+            {
+                case "start":
+                    if (!UnityEditor.EditorApplication.isPlaying)
+                        return new ErrorResponse("UI event monitoring requires Play Mode.");
+                    UIEventMonitor.Start();
+                    return new SuccessResponse(
+                        $"UI event monitoring started for {UIEventMonitor.MONITOR_TIMEOUT_SECONDS} seconds.",
+                        BuildEventMonitorStatus());
+                case "stop":
+                    UIEventMonitor.Stop();
+                    return new SuccessResponse("UI event monitoring stopped.", BuildEventMonitorStatus());
+                case "status":
+                    return new SuccessResponse(
+                        UIEventMonitor.IsMonitoring
+                            ? "UI event monitoring is active."
+                            : "UI event monitoring is inactive.",
+                        BuildEventMonitorStatus());
+                case "read":
+                    return ReadEvents();
+                default:
+                    return new ErrorResponse(
+                        $"Unknown events action '{eventAction}'. Valid: read, start, stop, status.");
+            }
+        }
+
+        static object ReadEvents()
         {
             var lines = UIEventMonitor.ReadAndClear();
             if (lines.Length == 0)
@@ -367,6 +399,17 @@ namespace UnityCliConnector.Tools
             }
 
             return new SuccessResponse($"{events.Count} event(s)", events);
+        }
+
+        static Newtonsoft.Json.Linq.JObject BuildEventMonitorStatus()
+        {
+            return new Newtonsoft.Json.Linq.JObject
+            {
+                ["monitoring"] = UIEventMonitor.IsMonitoring,
+                ["playing"] = UnityEditor.EditorApplication.isPlaying,
+                ["expires_in_seconds"] = System.Math.Ceiling(UIEventMonitor.ExpiresInSeconds),
+                ["timeout_seconds"] = UIEventMonitor.MONITOR_TIMEOUT_SECONDS,
+            };
         }
 
         static string ResolveOutputPrefix(string userPrefix)

@@ -423,7 +423,10 @@ UI (UIToolkit):
   ui query "type=Button"              Find element by selector
   ui click "id=save-btn"              Click element (returns before/after diff)
   ui type "id=input" "text"           Type text into field (returns diff)
-  ui events                           Read pending UI change events (play mode)
+  ui events start                     Start UI screen-change monitoring (5 min TTL)
+  ui events                           Read and clear pending UI change events
+  ui events stop                      Stop UI screen-change monitoring
+  ui events status                    Show UI monitor status
 
 Async Jobs:
   job <job_id>                  Poll and wait for async job result
@@ -855,10 +858,14 @@ Subcommands:
                                Returns before/after diff automatically.
     --window <name>            Target window
     --runtime / --editor       Limit search scope
-  events                       Read and clear pending UI change events.
-                               Unity monitors UIDocument additions/removals
-                               in play mode and writes events to a status file.
-                               Returns JSON array of events, empty if none.
+  events [read|start|stop|status]
+                               Manage opt-in UIDocument screen-change monitoring.
+                               start: clear stale events, capture the current UI
+                                      baseline, and monitor for up to 5 minutes
+                               read:  read and clear pending events (default)
+                               stop:  stop monitoring; pending events remain readable
+                               status: show active state and remaining TTL
+                               Monitoring also stops on Play Mode exit or domain reload.
 
 Selectors:
   label=Save                   Exact text match
@@ -880,7 +887,9 @@ Examples:
   unity-cli ui type "id=input-name" "PlayerOne"
   unity-cli ui tree --runtime --interactive
   unity-cli ui click --runtime "id=btn-create-room"
+  unity-cli ui events start
   unity-cli ui events
+  unity-cli ui events stop
 
 Click diff output format:
   {
@@ -894,8 +903,8 @@ Click diff output format:
 
 Events output format (play mode only):
   [
-    {"ts": "...", "type": "screen_added",   "name": "LobbyTK",   "element_count": 18},
-    {"ts": "...", "type": "screen_removed", "name": "LoadingTK",  "element_count": 0}
+    {"ts": "...", "type": "screen_added",   "name": "LobbyTK",  "instance_id": 123, "element_count": 18},
+    {"ts": "...", "type": "screen_removed", "name": "LoadingTK", "instance_id": 456, "element_count": 0}
   ]
 `)
 	case "list":

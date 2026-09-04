@@ -9,40 +9,106 @@ using UnityEngine.UIElements;
 namespace UnityCliConnector.UIToolkit
 {
     /// <summary>
-    /// Monitors UIDocument additions/removals each frame and writes events
-    /// to a JSONL status file. No Harmony, no reflection — plain Unity APIs.
+    /// Opt-in monitor for UIDocument additions/removals. While enabled it writes
+    /// events to a JSONL status file. No Harmony, no reflection — plain Unity APIs.
     /// </summary>
-    [InitializeOnLoad]
     internal static class UIEventMonitor
     {
         static readonly string s_StatusDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".unity-cli", "status");
 
-        // Last known UIDocument fingerprint: name → childCount
-        static Dictionary<string, int> s_LastFingerprint = new Dictionary<string, int>();
-        static double s_LastCheck;
-        const double CHECK_INTERVAL = 0.25; // 4 checks/sec, not every frame
-
-        static UIEventMonitor()
+        sealed class DocumentFingerprint
         {
-            EditorApplication.update += Tick;
-            EditorApplication.playModeStateChanged += _ => Reset();
-            AssemblyReloadEvents.beforeAssemblyReload += () => EditorApplication.update -= Tick;
-            AssemblyReloadEvents.afterAssemblyReload += () =>
-            {
-                Reset();
-                EditorApplication.update += Tick;
-            };
+            internal string Name;
+            internal int ChildCount;
         }
 
-        static void Reset()
+        // Instance ID distinguishes replacement documents that reuse the same GameObject name.
+        static Dictionary<int, DocumentFingerprint> s_LastFingerprint =
+            new Dictionary<int, DocumentFingerprint>();
+        static bool s_HasBaseline;
+        static double s_LastCheck;
+        static double s_ExpiresAt;
+        static bool s_IsMonitoring;
+        const double CHECK_INTERVAL = 0.25; // 4 checks/sec, not every frame
+        internal const int MONITOR_TIMEOUT_SECONDS = 300;
+
+        internal static bool IsMonitoring
         {
-            s_LastFingerprint.Clear();
-            s_LastCheck = 0;
+            get
+            {
+                StopIfExpired();
+                return s_IsMonitoring;
+            }
+        }
+
+        internal static double ExpiresInSeconds
+        {
+            get
+            {
+                StopIfExpired();
+                return s_IsMonitoring
+                    ? Math.Max(0, s_ExpiresAt - EditorApplication.timeSinceStartup)
+                    : 0;
+            }
+        }
+
+        internal static void Start()
+        {
+            if (!s_IsMonitoring)
+            {
+                EditorApplication.update += Tick;
+                EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+                AssemblyReloadEvents.beforeAssemblyReload += Stop;
+                s_IsMonitoring = true;
+            }
+
+            ClearPending();
+            ResetFingerprint();
+            s_ExpiresAt = EditorApplication.timeSinceStartup + MONITOR_TIMEOUT_SECONDS;
+        }
+
+        internal static void Stop()
+        {
+            if (s_IsMonitoring)
+            {
+                EditorApplication.update -= Tick;
+                EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
+                AssemblyReloadEvents.beforeAssemblyReload -= Stop;
+                s_IsMonitoring = false;
+            }
+
+            s_ExpiresAt = 0;
+            ResetFingerprint(captureCurrent: false);
+        }
+
+        static void OnPlayModeStateChanged(PlayModeStateChange state)
+        {
+            if (state == PlayModeStateChange.EnteredPlayMode)
+                ResetFingerprint();
+            else if (state == PlayModeStateChange.ExitingPlayMode)
+                Stop();
+        }
+
+        static void ResetFingerprint(bool captureCurrent = true)
+        {
+            s_LastFingerprint = captureCurrent && EditorApplication.isPlaying
+                ? BuildFingerprint()
+                : new Dictionary<int, DocumentFingerprint>();
+            s_HasBaseline = captureCurrent && EditorApplication.isPlaying;
+            s_LastCheck = EditorApplication.timeSinceStartup;
+        }
+
+        static void StopIfExpired()
+        {
+            if (s_IsMonitoring && EditorApplication.timeSinceStartup >= s_ExpiresAt)
+                Stop();
         }
 
         static void Tick()
         {
+            StopIfExpired();
+            if (!s_IsMonitoring) return;
             if (!EditorApplication.isPlaying) return;
 
             var now = EditorApplication.timeSinceStartup;
@@ -50,10 +116,11 @@ namespace UnityCliConnector.UIToolkit
             s_LastCheck = now;
 
             var current = BuildFingerprint();
-            if (s_LastFingerprint.Count == 0 && current.Count > 0)
+            if (!s_HasBaseline)
             {
                 // First observation — just record, don't emit events
                 s_LastFingerprint = current;
+                s_HasBaseline = true;
                 return;
             }
 
@@ -64,7 +131,8 @@ namespace UnityCliConnector.UIToolkit
             {
                 if (!current.ContainsKey(kv.Key))
                 {
-                    events.Add(FormatEvent("screen_removed", kv.Key, 0));
+                    events.Add(FormatEvent(
+                        "screen_removed", kv.Value.Name, kv.Key, 0));
                 }
             }
 
@@ -73,7 +141,8 @@ namespace UnityCliConnector.UIToolkit
             {
                 if (!s_LastFingerprint.ContainsKey(kv.Key))
                 {
-                    events.Add(FormatEvent("screen_added", kv.Key, kv.Value));
+                    events.Add(FormatEvent(
+                        "screen_added", kv.Value.Name, kv.Key, kv.Value.ChildCount));
                 }
             }
 
@@ -83,9 +152,9 @@ namespace UnityCliConnector.UIToolkit
                 AppendEvents(events);
         }
 
-        static Dictionary<string, int> BuildFingerprint()
+        static Dictionary<int, DocumentFingerprint> BuildFingerprint()
         {
-            var fp = new Dictionary<string, int>();
+            var fp = new Dictionary<int, DocumentFingerprint>();
 
 #if UNITY_2023_1_OR_NEWER
             var documents = UnityEngine.Object.FindObjectsByType<UIDocument>(FindObjectsSortMode.None);
@@ -98,27 +167,22 @@ namespace UnityCliConnector.UIToolkit
                 if (doc == null || !doc.gameObject.activeInHierarchy) continue;
                 var root = doc.rootVisualElement;
                 int childCount = root != null ? root.childCount : 0;
-                var name = doc.gameObject.name;
-
-                // Disambiguate duplicate names (§ won't appear in real GameObject names)
-                if (fp.ContainsKey(name))
+                var instanceId = doc.GetInstanceID();
+                fp[instanceId] = new DocumentFingerprint
                 {
-                    int suffix = 2;
-                    while (fp.ContainsKey(name + "§" + suffix)) suffix++;
-                    name = name + "§" + suffix;
-                }
-
-                fp[name] = childCount;
+                    Name = doc.gameObject.name,
+                    ChildCount = childCount,
+                };
             }
 
             return fp;
         }
 
-        static string FormatEvent(string type, string name, int elementCount)
+        static string FormatEvent(string type, string name, int instanceId, int elementCount)
         {
             var ts = DateTime.Now.ToString("o");
-            // Manual JSON — avoid allocating JObject for a 3-field line
-            return $"{{\"ts\":\"{ts}\",\"type\":\"{type}\",\"name\":\"{EscapeJson(name)}\",\"element_count\":{elementCount}}}";
+            // Manual JSON — avoid allocating JObject for a small status line
+            return $"{{\"ts\":\"{ts}\",\"type\":\"{type}\",\"name\":\"{EscapeJson(name)}\",\"instance_id\":{instanceId},\"element_count\":{elementCount}}}";
         }
 
         static string EscapeJson(string s)
@@ -148,6 +212,20 @@ namespace UnityCliConnector.UIToolkit
         internal static string GetEventsFilePath()
         {
             return Path.Combine(s_StatusDir, $"ui-events-{HttpServer.Port}.jsonl");
+        }
+
+        static void ClearPending()
+        {
+            try
+            {
+                var path = GetEventsFilePath();
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+            catch
+            {
+                // A stale event file must not prevent monitoring from starting.
+            }
         }
 
         /// <summary>

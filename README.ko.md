@@ -154,6 +154,7 @@ Unity 커넥터의 동작:
 | `menu` | Unity 메뉴 아이템을 경로로 실행 |
 | `reserialize` | Unity 시리얼라이저를 통해 에셋 재직렬화 |
 | `screenshot` | Scene/Game 뷰를 PNG로 캡처 |
+| `ui` | UIToolkit UI 조회·조작 및 명시적 화면 전환 감시 |
 | `profiler` | 프로파일러 하이어라키 읽기, 녹화 제어 |
 | `list` | 사용 가능한 모든 도구와 파라미터 스키마 표시 |
 | `status` | Unity Editor 연결 상태 확인 |
@@ -330,6 +331,25 @@ unity-cli profiler status
 # 캡쳐된 프레임 초기화
 unity-cli profiler clear
 ```
+
+### UIToolkit UI
+
+런타임 또는 Editor의 UIToolkit 요소를 조회하고 조작합니다. 클릭과 입력 명령은 즉시 before/after diff를 반환합니다. 비동기 화면 전환 감시는 명시적으로 켜야 하므로, 사용하지 않을 때는 프레임 단위 UI 탐색 비용이 없습니다.
+
+```bash
+# Play Mode의 런타임 UI 확인
+unity-cli ui tree --runtime --interactive
+
+# UIDocument가 추가·제거될 수 있는 연속 작업 감시
+unity-cli ui events start
+unity-cli ui click --runtime "id=start-button"
+unity-cli ui events                 # 대기 이벤트 읽고 비우기
+unity-cli ui events status
+unity-cli ui events stop
+```
+
+`ui events`는 `ui events read`와 같으며, 읽기만으로 감시가 시작되지는 않습니다. `start`는 오래된 이벤트를 지우고 현재 UI를 기준선으로 캡처합니다. 감시는 5분 후, Play Mode 종료 시, 또는 도메인 리로드 시 자동 해제됩니다.
+
 
 ### 테스트 실행
 

@@ -14,6 +14,7 @@ Bash/CLI로 Unity Editor를 제어한다. MCP가 아니다. 멀티 Unity 인스�
 - 에셋/SO 수정 후에는 `AssetDatabase.SaveAssets()`를 호출한다. 필요하면 `reserialize` 또는 에디터 refresh/console 확인까지 한다.
 - 콘솔/컴파일 확인 때문에 `Assets/Reimport All` 또는 `AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate)`를 쓰지 않는다. `editor refresh` 후 `console --type error`만 사용한다.
 - `trace` 훅은 도메인 리로드/스크립트 리컴파일 시 사라진다. 리컴파일 후에는 다시 등록한다.
+- UI 화면 전환 감시는 상시 실행되지 않는다. Play Mode 진입 후 연속 UI QA 직전에 `ui events start`, 끝나면 `ui events stop`을 실행한다. 5분 TTL, Play Mode 종료, 도메인 리로드로도 자동 해제된다.
 - 검증은 대상 프로젝트의 실제 Editor 인스턴스에 `--project <정확한경로>`를 지정해 수행한다. 같은 worktree의 commit하지 않은 변경도 그 Editor가 직접 읽는다.
 - 별도 Editor 실행 수 제한이나 작업 컨텍스트는 프로젝트별 운영 스크립트가 담당한다. unity-cli 자체는 다른 Editor를 자동 종료하거나 작업 소유권을 추론하지 않는다.
 
@@ -29,7 +30,7 @@ Bash/CLI로 Unity Editor를 제어한다. MCP가 아니다. 멀티 Unity 인스�
 - 직접 worktree 검증: 정확한 `--project`로 `editor refresh --compile` → `console --type error` → 필요한 좁은 DryRunner/test를 실행한다.
 - C# 조회/수정: 간단하면 `exec "return ...;"`, 복잡하면 `exec --file d:/tmp/query.cs --usings ...`
 - 시각 확인: 수치/상태는 `exec` 우선, 눈으로 봐야 할 때만 `screenshot --output_path d:/tmp/screenshot.png`
-- UI QA: 플레이 모드에서 `ui tree --runtime --interactive` 먼저 사용한다. 클릭/입력은 `ui click --runtime ...`, `ui type --runtime ...`; 화면 전환은 `ui events`로 확인한다.
+- UI QA: 플레이 모드에서 `ui tree --runtime --interactive` 먼저 사용한다. 단일 클릭/입력은 `ui click --runtime ...`, `ui type --runtime ...`의 즉시 diff를 본다. 비동기 화면 전환을 연속 감시할 때만 `ui events start` → 작업 중 `ui events` → 반드시 `ui events stop` 순서로 사용한다.
 - 런타임 호출 추적: `trace hook --type T --method M` → `trace read`/`trace list` → 끝나면 `trace clear`
 - 커스텀 도구/파라미터 확인: `list`
 
@@ -38,7 +39,7 @@ Bash/CLI로 Unity Editor를 제어한다. MCP가 아니다. 멀티 Unity 인스�
 - `exec`: Unity 메인 스레드에서 C# 실행. UnityEngine, UnityEditor, 로드된 어셈블리에 접근 가능. `Object`가 모호하면 `UnityEngine.Object`를 명시한다. 지연 callback/API는 기본 차단되며 `--async`와 `--allow-deferred-code`는 서로 다른 옵션이다.
 - `console`: 기본은 에러/경고 확인. 컴파일 에러는 `editor refresh` 뒤 `console --type error`로 본다.
 - `screenshot`: 항상 `d:/tmp/screenshot.png`에 덮어쓰고 이미지 read 도구로 확인한다. 특정 창은 `screenshot --action list_windows` 후 window 캡처를 사용한다.
-- `ui`: 게임 UI만 볼 때는 `--runtime`을 붙인다. `--interactive`는 Button/TextField/Label 중심으로 레이아웃 노이즈를 줄인다.
+- `ui`: 게임 UI만 볼 때는 `--runtime`을 붙인다. `--interactive`는 Button/TextField/Label 중심으로 레이아웃 노이즈를 줄인다. `ui events`는 감시를 켜지 않고 대기 이벤트만 읽으므로, 화면 전환 감시는 먼저 `ui events start`가 필요하다.
 - `trace`: 오버로드는 첫 매칭일 수 있다. `--stack`은 비용이 크므로 필요한 경우만 쓴다. native/extern 메서드는 훅 불가.
 - `profiler`: 성능 분석이 필요할 때만 사용하고, 옵션은 먼저 `profiler --help`로 확인한다.
 - `reserialize`: YAML 에셋을 텍스트 수정한 뒤 Unity serializer로 다시 저장할 때 사용한다.
