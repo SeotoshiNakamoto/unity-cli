@@ -4,6 +4,7 @@ Bash/CLI로 Unity Editor를 제어한다. MCP가 아니다. 멀티 Unity 인스�
 
 ## 🚨 Critical Rules
 
+- Bash에서 `unity-cli`를 부를 때는 명령 종류와 관계없이 항상 `< /dev/null`을 붙인다(`unity-cli --project ... exec --file d:/tmp/q.cs < /dev/null > d:/tmp/out.txt`). 출력을 파일·파이프로 넘기거나 백그라운드로 돌리면 CLI가 stdin을 기다리며 끝나지 않는다. Unity는 `ready`인데 명령이 돌아오지 않거나 결과 파일이 비어 있으면 이 경우이므로, 걸린 `unity-cli.exe` 프로세스를 끝내고 `< /dev/null`을 붙여 다시 실행한다.
 - 일반 Bash 호출은 항상 canonical 전체 경로로 `--project <UnityProjectPath>`를 붙인다. 절대 경로는 완전일치만 허용하며 대상 Editor가 없으면 실패한다. 다른 Editor로 fallback하지 않는다. 멀티 인스턴스는 `instances list --json`으로 경로·포트·PID를 먼저 확인한다. pi `unity_cli` 도구는 자동으로 붙이므로 `--project`/`--port`를 직접 넘기지 않는다.
 - SessionStart의 `연결 상태`는 요청한 프로젝트의 진단 결과다. `Target Editor: not running`이면 다른 프로젝트가 실행 중이어도 Unity 명령을 보내지 말고 대상 Editor를 먼저 연다.
 - 추측으로 옵션을 만들지 말고, 파라미터가 헷갈리면 먼저 `unity-cli <command> --help` 또는 `unity-cli list`를 확인한다.
@@ -57,6 +58,7 @@ Bash/CLI로 Unity Editor를 제어한다. MCP가 아니다. 멀티 Unity 인스�
 
 - ProjectD Unity는 user-local `projectd-work-slot/scripts/open-projectd-unity.ps1`로만 연다. main+agent 합계 3개 상한이며 agent 창은 `LLM 유니티 슬롯 1/2` 중 덜 찬 가상 데스크톱으로 이동한다.
 - agent Editor는 connector ready 뒤 Run In Background, GameDevTool, Player ID, 원콤 프로필이 자동 적용된다. 이 초기화가 실패하면 compile/runtime 검증을 계속하지 않는다.
+- 가상 키보드·패드·마우스로 게임 입력을 검증할 때 Editor를 앞으로 올릴 필요가 없다. 가상 입력 전에 `projectd_e2e --action input_focus_status`로 입력 포커스 게이트를 확인하고, 꺼져 있으면 `projectd_e2e --action set_input_without_focus --enabled true`로 켠다. 켜 두면 다른 창이 앞에 있어도 입력이 버려지지 않는다. 사람이 물리 패드로 멀티 Editor를 조작할 때는 켜지 않는다. 이 action이 없는 브랜치에서는 건너뛴다.
 - SO 수정은 런타임 핫 리로드 가능하다. 플레이 중 즉시 반영될 수 있으나 저장은 `AssetDatabase.SaveAssets()`로 보장한다.
 - SO는 바이너리 익스포트 불필요. ActionDataGroup/JSON/CSV 변경은 `@Spiral/Util/ExportBinary` 실행 대상이다.
 - 함정 공격 주기는 SkillTable CSV가 아니라 MonsterConstants SO의 AttackCooldown을 본다.
