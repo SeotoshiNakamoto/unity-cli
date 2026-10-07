@@ -227,6 +227,8 @@ unity-cli exec --file long-running.cs --async
 unity-cli exec "EditorApplication.delayCall += RunLater; return null;" --allow-deferred-code
 ```
 
+생성된 소스와 컴파일 조건이 같으면 현재 에디터 도메인에 로드한 실행 메서드를 재사용합니다. 결과값은 캐시하지 않으며, 코드는 호출할 때마다 실행됩니다. 스크립트 컴파일과 도메인 리로드 시에는 캐시를 무효화합니다. 서로 다른 코드나 달라진 컴파일 조건은 추가 어셈블리를 로드하며, 캐시를 지워도 어셈블리가 언로드되지는 않습니다. 캐시 키는 DLL 파일 내용 대신 생성된 소스, 컴파일 옵션·경로와 로드된 참조 메타데이터를 사용합니다. 자동으로 찾은 컴파일러와 실행 호스트 경로는 현재 에디터 도메인에서 재사용하며, 파일이 사라지면 다시 탐색합니다. 명시한 경로는 자동 탐색 결과를 덮어쓰지 않습니다. 같은 경로의 도구 체인을 교체한 경우에는 에디터를 재시작하거나 도메인을 리로드해야 합니다. 검증 범위와 제한은 [exec 캐시 회귀 테스트](tests/exec/README.md)에 정리했습니다.
+
 `exec`는 실제 C#을 컴파일하고 실행하므로, 커스텀 도구가 할 수 있는 모든 것을 할 수 있습니다 — ECS 엔티티 조사, 에셋 수정, 내부 API 호출, 에디터 유틸리티 실행. AI 에이전트에게 이것은 **도구 코드를 한 줄도 작성하지 않고 Unity 전체 런타임에 즉시 접근**할 수 있다는 의미입니다. stdin 파이프를 사용하면 복잡한 코드에서 shell escaping 문제를 피할 수 있습니다.
 
 요청보다 오래 살아남을 수 있는 코드(`async`/`await`, task, coroutine, Unity async operation, `EditorApplication` 지연 callback)는 기본 차단됩니다. `--async`는 CLI 명령 전체를 polling 가능한 job으로 옮길 뿐 분리된 C# callback을 안전하게 만들지 않습니다. 해당 수명과 정리를 의도적으로 책임질 때만 `--allow-deferred-code`를 사용하세요.

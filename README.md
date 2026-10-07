@@ -227,6 +227,8 @@ unity-cli exec --file long-running.cs --async
 unity-cli exec "EditorApplication.delayCall += RunLater; return null;" --allow-deferred-code
 ```
 
+Identical generated source and compilation inputs reuse a loaded execution method within the current Editor domain; the code still runs on every call and results are not cached. Script compilation and domain reload invalidate the cache. Different code or changed compilation inputs still load additional assemblies: clearing the cache does not unload them. Cache keys use generated source, compiler options/paths and ordered loaded-reference metadata, not DLL file contents. Successful automatic compiler/host paths are reused within the Editor domain and rediscovered if their files disappear; overrides do not replace remembered paths. Restart/reload after in-place toolchain changes. See [exec cache regression tests](tests/exec/README.md) for validation scope and limitations.
+
 Because `exec` compiles and runs real C#, it can do anything a custom tool can — inspect ECS entities, modify assets, call internal APIs, run editor utilities. For AI agents, this means **zero-friction access to Unity's entire runtime** without writing a single line of tool code. Piping via stdin avoids shell escaping headaches with complex code.
 
 Code that can outlive the request (`async`/`await`, tasks, coroutines, Unity async operations, or `EditorApplication` deferred callbacks) is blocked by default. `--async` only moves the complete CLI command into a pollable job; it does not make detached C# callbacks safe. Use `--allow-deferred-code` only when that lifetime is intentional and cleanup is handled explicitly.

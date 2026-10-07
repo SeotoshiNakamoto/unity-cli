@@ -4,10 +4,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
+using CompilationPipeline = UnityEditor.Compilation.CompilationPipeline;
 using UnityEngine;
 
 namespace UnityCliConnector.Tools
@@ -15,6 +17,20 @@ namespace UnityCliConnector.Tools
     [UnityCliTool(Name = "exec", Description = "Execute arbitrary C# code at runtime. Full access to Unity and all loaded assemblies.")]
     public static class ExecuteCsharp
     {
+        // CommandRouter serializes exec on the Editor thread. Cache methods, never results.
+        // Loaded assemblies remain in this AppDomain even after the cache is cleared.
+        private static readonly Dictionary<string, MethodInfo> CompiledMethods = new Dictionary<string, MethodInfo>();
+        private static string AutoCscPath;
+        private static string AutoDotnetPath;
+        private const string CompilerOptions = "-target:library\n-nologo\n-nowarn:0105,1701,1702\n-langversion:latest\n-codepage:65001\n";
+
+        static ExecuteCsharp()
+        {
+            AssemblyReloadEvents.beforeAssemblyReload += CompiledMethods.Clear;
+            CompilationPipeline.compilationStarted += _ => CompiledMethods.Clear();
+            CompilationPipeline.compilationFinished += _ => CompiledMethods.Clear();
+        }
+
         private static readonly string[] DefaultUsings =
         {
             "System",
@@ -104,6 +120,38 @@ namespace UnityCliConnector.Tools
 
         private static object CompileAndExecute(string source, string cscOverride = null, string dotnetOverride = null)
         {
+            var csc = FindCsc(cscOverride);
+            if (csc == null)
+                return new ErrorResponse(
+                    "Cannot find csc compiler under: " +
+                    EditorApplication.applicationContentsPath +
+                    "\nSpecify the path manually with --csc <path-to-csc.dll-or-csc.exe>");
+
+            var usesDotnet = csc.EndsWith(".dll");
+            var exe = usesDotnet ? FindDotnet(dotnetOverride) : csc;
+            if (exe == null)
+                return new ErrorResponse(
+                    "Cannot find dotnet runtime under: " +
+                    EditorApplication.applicationContentsPath +
+                    "\nSpecify the path manually with --dotnet <path>");
+
+            // Share the ordered reference set between the key and compiler.
+            var references = new List<Assembly>();
+            var added = new HashSet<string>();
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    if (asm.IsDynamic || string.IsNullOrEmpty(asm.Location)) continue;
+                    if (!added.Add(asm.GetName().Name)) continue;
+                    references.Add(asm);
+                }
+                catch { }
+            }
+            var key = EditorApplication.isCompiling ? null : BuildCacheKey(source, references, csc, exe);
+            if (key != null && CompiledMethods.TryGetValue(key, out var cachedMethod))
+                return Execute(cachedMethod);
+
             var utf8 = new UTF8Encoding(false);
             var tmpDir = Path.Combine(Path.GetTempPath(), "unity-cli-exec");
             Directory.CreateDirectory(tmpDir);
@@ -118,55 +166,16 @@ namespace UnityCliConnector.Tools
                 File.WriteAllText(srcFile, source, utf8);
 
                 var rsp = new StringBuilder();
-                rsp.AppendLine("-target:library");
+                rsp.Append(CompilerOptions);
                 rsp.AppendLine($"-out:\"{outFile}\"");
-                rsp.AppendLine("-nologo");
-                rsp.AppendLine("-nowarn:0105,1701,1702");
-                rsp.AppendLine("-langversion:latest");
-                rsp.AppendLine("-codepage:65001");
                 rsp.AppendLine($"\"{srcFile}\"");
-
-                var added = new HashSet<string>();
-                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-                {
-                    try
-                    {
-                        if (asm.IsDynamic || string.IsNullOrEmpty(asm.Location)) continue;
-                        if (!added.Add(asm.GetName().Name)) continue;
-                        rsp.AppendLine($"-r:\"{asm.Location}\"");
-                    }
-                    catch { }
-                }
+                foreach (var asm in references)
+                    rsp.AppendLine($"-r:\"{asm.Location}\"");
 
                 File.WriteAllText(rspFile, rsp.ToString(), utf8);
 
                 var rspArg = $"@\"{rspFile}\"";
-                var csc = FindCsc(cscOverride);
-                string exe, args;
-
-                if (csc != null && csc.EndsWith(".dll"))
-                {
-                    var dotnet = FindDotnet(dotnetOverride);
-                    if (dotnet == null)
-                        return new ErrorResponse(
-                            "Cannot find dotnet runtime under: " +
-                            EditorApplication.applicationContentsPath +
-                            "\nSpecify the path manually with --dotnet <path>");
-                    exe = dotnet;
-                    args = $"exec \"{csc}\" {rspArg}";
-                }
-                else if (csc != null)
-                {
-                    exe = csc;
-                    args = rspArg;
-                }
-                else
-                {
-                    return new ErrorResponse(
-                        "Cannot find csc compiler under: " +
-                        EditorApplication.applicationContentsPath +
-                        "\nSpecify the path manually with --csc <path-to-csc.dll-or-csc.exe>");
-                }
+                var args = usesDotnet ? $"exec \"{csc}\" {rspArg}" : rspArg;
 
                 var psi = new ProcessStartInfo
                 {
@@ -199,17 +208,10 @@ namespace UnityCliConnector.Tools
                 if (method == null)
                     return new ErrorResponse("Internal error: compiled type or method not found.");
 
-                object result;
-                try
-                {
-                    result = method.Invoke(null, null);
-                }
-                catch (TargetInvocationException tie)
-                {
-                    var inner = tie.InnerException ?? tie;
-                    return new ErrorResponse($"Runtime error: {inner.GetType().Name}: {inner.Message}");
-                }
-                return new SuccessResponse("OK", Serialize(result, 0));
+                // Cache successful compilation, including methods that throw at runtime.
+                if (key != null && !EditorApplication.isCompiling)
+                    CompiledMethods[key] = method;
+                return Execute(method);
             }
             finally
             {
@@ -219,22 +221,75 @@ namespace UnityCliConnector.Tools
             }
         }
 
+        private static object Execute(MethodInfo method)
+        {
+            object result;
+            try
+            {
+                result = method.Invoke(null, null);
+            }
+            catch (TargetInvocationException tie)
+            {
+                var inner = tie.InnerException ?? tie;
+                return new ErrorResponse($"Runtime error: {inner.GetType().Name}: {inner.Message}");
+            }
+            return new SuccessResponse("OK", Serialize(result, 0));
+        }
+
+        private static string BuildCacheKey(string source, List<Assembly> references, string csc, string exe)
+        {
+            try
+            {
+                // Unresolved executables and ambient response files bypass caching.
+                if (!Path.IsPathRooted(csc) || !Path.IsPathRooted(exe)) return null;
+                var compilerDir = Path.GetDirectoryName(csc);
+                if (File.Exists(Path.Combine(compilerDir, "csc.rsp")) ||
+                    File.Exists(Path.Combine(Environment.CurrentDirectory, "csc.rsp"))) return null;
+
+                using (var sha = new SHA256CryptoServiceProvider())
+                using (var stream = new MemoryStream())
+                using (var writer = new BinaryWriter(stream, Encoding.UTF8, true))
+                {
+                    writer.Write(source);
+                    writer.Write(CompilerOptions);
+                    writer.Write(Path.GetFullPath(csc));
+                    writer.Write(Path.GetFullPath(exe));
+                    foreach (var asm in references)
+                    {
+                        writer.Write(asm.FullName);
+                        writer.Write(asm.ManifestModule.ModuleVersionId.ToString());
+                        writer.Write(asm.Location);
+                    }
+                    writer.Flush();
+                    stream.Position = 0;
+                    return Convert.ToBase64String(sha.ComputeHash(stream));
+                }
+            }
+            catch
+            {
+                // Preserve normal compilation if reference metadata is unavailable.
+                return null;
+            }
+        }
+
         private static string FindCsc(string cscOverride = null)
         {
             if (!string.IsNullOrEmpty(cscOverride))
                 return cscOverride;
 
+            if (File.Exists(AutoCscPath)) return AutoCscPath;
+
             var content = EditorApplication.applicationContentsPath;
             var cscDll = SearchFile(content, "csc.dll");
-            if (cscDll != null) return cscDll;
+            if (cscDll != null) return AutoCscPath = cscDll;
 
             if (Application.platform == RuntimePlatform.WindowsEditor)
             {
                 var cscExe = SearchFile(content, "csc.exe");
-                if (cscExe != null) return cscExe;
+                if (cscExe != null) return AutoCscPath = cscExe;
             }
 
-            return null;
+            return AutoCscPath = null;
         }
 
         private static string SearchFile(string dir, string name)
@@ -255,9 +310,11 @@ namespace UnityCliConnector.Tools
             if (!string.IsNullOrEmpty(dotnetOverride))
                 return dotnetOverride;
 
+            if (File.Exists(AutoDotnetPath)) return AutoDotnetPath;
+
             var name = "dotnet" + (Application.platform == RuntimePlatform.WindowsEditor ? ".exe" : "");
-            var found = SearchFile(EditorApplication.applicationContentsPath, name);
-            return found ?? name;
+            AutoDotnetPath = SearchFile(EditorApplication.applicationContentsPath, name);
+            return AutoDotnetPath ?? name;
         }
 
         private static string FormatErrors(string raw)

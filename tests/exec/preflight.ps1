@@ -1,0 +1,34 @@
+param(
+    [Parameter(Mandatory = $true)][string]$UnityEditorData,
+    [Parameter(Mandatory = $true)][string]$ProjectPath
+)
+$ErrorActionPreference = 'Stop'
+$root = (Resolve-Path "$PSScriptRoot/../..").Path
+$project = (Resolve-Path $ProjectPath).Path
+$rsp = Get-ChildItem "$project/Library/Bee/artifacts" -Filter UnityCliConnector.Editor.rsp -Recurse |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if (!$rsp) { throw 'No actual UnityCliConnector.Editor response file; compile the project first' }
+$text = [IO.File]::ReadAllText($rsp.FullName)
+if ($text -notmatch 'UnityEditor.CoreModule.dll') { throw 'UnityEditor.CoreModule reference missing' }
+$temp = Join-Path ([IO.Path]::GetTempPath()) ("exec-preflight-" + [Guid]::NewGuid())
+New-Item -ItemType Directory $temp | Out-Null
+Push-Location $project
+try {
+    $text = [regex]::Replace($text, '(?m)^-out:.*$', ('-out:"' + "$temp/UnityCliConnector.Editor.dll" + '"'))
+    $text = [regex]::Replace($text, '(?m)^-refout:.*$', ('-refout:"' + "$temp/UnityCliConnector.Editor.ref.dll" + '"'))
+    $source = [regex]::Match($text, '(?m)^"[^"]*/Editor/Tools/ExecuteCsharp.cs"\r?$')
+    if (!$source.Success) { throw 'ExecuteCsharp source entry missing' }
+    $text = $text.Replace($source.Value.TrimEnd("`r"), ('"' + "$root/unity-connector/Editor/Tools/ExecuteCsharp.cs" + '"'))
+    $testRsp = Join-Path $temp 'preflight.rsp'
+    [IO.File]::WriteAllText($testRsp, $text, (New-Object Text.UTF8Encoding($false)))
+    $dotnet = Join-Path $UnityEditorData 'DotNetSdk/dotnet.exe'
+    $csc = (Get-ChildItem "$UnityEditorData/DotNetSdk/sdk/*/Roslyn/bincore/csc.dll" | Select-Object -First 1).FullName
+    $arguments = @('exec', $csc, '/nostdlib', '/noconfig', '-nologo', "@$testRsp")
+    if (Test-Path ($rsp.FullName + '2')) { $arguments += '@' + ($rsp.FullName + '2') }
+    & $dotnet @arguments
+    if ($LASTEXITCODE -ne 0) { throw 'Actual Unity reference preflight failed; do not deploy' }
+    Write-Output "PASS: actual Unity response file $($rsp.FullName), including UnityEditor.CoreModule; outputs isolated and removed."
+} finally {
+    Pop-Location
+    Remove-Item $temp -Recurse -Force
+}
