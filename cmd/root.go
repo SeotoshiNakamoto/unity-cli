@@ -767,6 +767,8 @@ during capture. Per-event failures are recorded and traversal continues;
 timeout/frame changes save a partial dump and return an error.
 Summary: events, failures, batch reasons, shader/passes, reported draw calls,
 and render-target descriptor transitions (not native attachment identity).
+Shader/pass/batch/draw counts exclude clear/dispatch events. Dispatch summaries
+are separate. Inapplicable fields are null (Unity can retain prior draw data).
 Events include clears, dispatches and scopes: NOT one-to-one GPU draws.
 No GPU timings; counts alone cannot prove a GPU performance improvement.
 Missing optional API fields are null and listed in missingFields.

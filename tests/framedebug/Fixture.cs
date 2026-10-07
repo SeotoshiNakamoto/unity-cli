@@ -90,6 +90,7 @@ namespace UnityEditorInternal.FrameDebuggerInternal
     {
         public static int ticks, selectedAt, failIndex = -1;
         public static bool noEvents, staleData;
+        public static string lastType = "ComputeDispatch";
         public static void SetEnabled(bool value, int connection) { UnityEngine.FrameDebugger.enabled = value; }
         public static int GetRemotePlayerGUID() => 0;
         public static int count => noEvents ? 0 : 3;
@@ -98,7 +99,7 @@ namespace UnityEditorInternal.FrameDebuggerInternal
         public static int eventsHash { get; set; } = 123;
         public static FrameDebuggerEvent[] GetFrameEvents() => noEvents ? new FrameDebuggerEvent[0] : new[]
         {
-            new FrameDebuggerEvent { m_Type = "Mesh" }, new FrameDebuggerEvent { m_Type = "Mesh" }, new FrameDebuggerEvent { m_Type = "ComputeDispatch" }
+            new FrameDebuggerEvent { m_Type = "Mesh" }, new FrameDebuggerEvent { m_Type = "Mesh" }, new FrameDebuggerEvent { m_Type = lastType }
         };
         public static string[] GetBatchBreakCauseStrings() => new[] { "None", "Different material" };
         public static string GetFrameEventInfoName(int i) => "Scope/Fixture" + i;
@@ -135,7 +136,7 @@ class Fixture
         UnityEngine.FrameDebugger.enabled = enabled;
         UnityEditor.EditorApplication.isPaused = false;
         UnityEditor.EditorWindow.current = enabled ? new UnityEditor.FrameDebuggerWindow() : null;
-        Utility.limit = 2; Utility.eventsHash = 123; Utility.failIndex = -1; Utility.noEvents = Utility.staleData = false;
+        Utility.limit = 2; Utility.eventsHash = 123; Utility.failIndex = -1; Utility.noEvents = Utility.staleData = false; Utility.lastType = "ComputeDispatch";
         UnityEditor.FrameDebuggerWindow.failEnable = false;
         output = Path.Combine(Path.GetTempPath(), "framedebug-fixture-" + Guid.NewGuid() + ".json");
     }
@@ -155,9 +156,11 @@ class Fixture
         Reset(); var task = Start(); Assert(!task.IsCompleted, "Must yield across updates");
         Assert(Complete(task) is SuccessResponse, "Full capture failed"); var d = Dump();
         Assert((int)d["summary"]["dumpedEvents"] == 3, "Off-by-one traversal");
-        Assert((int)d["summary"]["renderTargetTransitions"] == 1, "Target transition count");
-        Assert((int)d["summary"]["reportedDrawCalls"] == 6, "Draw counts");
-        Assert((int)d["summary"]["shaderPasses"]["Fixture/Shader / Forward / 0"] == 3, "Shader/pass histogram");
+        Assert((int)d["summary"]["renderTargetTransitions"] == 0, "Stale compute target counted");
+        Assert((int)d["summary"]["reportedDrawCalls"] == 4, "Stale compute draw count included");
+        Assert((int)d["summary"]["shaderPasses"]["Fixture/Shader / Forward / 0"] == 2, "Stale compute shader counted");
+        Assert(d["events"][2]["shader"].Type == JTokenType.Null && d["events"][2]["blend"].Type == JTokenType.Null, "Compute stale graphics state retained");
+        Assert(d["events"][2]["compute"].Type == JTokenType.Object && d["events"][0]["compute"].Type == JTokenType.Null, "Dispatch applicability");
         Assert((string)d["events"][0]["pass"]["lightMode"] == "UniversalForward", "Pass mapping");
         Assert((string)d["events"][0]["blend"]["srcBlend"] == "One", "Render state mapping");
         Assert((float)d["events"][0]["shaderProperties"]["floats"][0]["value"] == 0.5f, "Property mapping");
@@ -170,6 +173,10 @@ class Fixture
         Assert(d["events"][0]["renderTarget"]["clearDepth"].Type == JTokenType.Null, "Missing fields must be null");
         Assert(d["missingFields"].ToString().Contains("m_RenderTargetClearDepth"), "Missing field diagnostic");
         Assert(!UnityEngine.FrameDebugger.enabled && !UnityEditor.EditorApplication.isPaused && UnityEditor.EditorWindow.current == null, "Initial disabled state not restored");
+        Reset(); Utility.lastType = "ClearAll"; Complete(Start()); d = Dump();
+        Assert(d["events"][2]["shaderProperties"].Type == JTokenType.Null && d["events"][2]["pass"].Type == JTokenType.Null, "Clear stale shader data retained");
+        Assert(d["events"][2]["clear"].Type == JTokenType.Object && d["events"][0]["clear"].Type == JTokenType.Null, "Clear applicability");
+        Assert((int)d["summary"]["reportedDrawCalls"] == 4 && (int)d["summary"]["renderTargetTransitions"] == 1, "Clear summary normalization");
         Reset(true); var window = UnityEditor.EditorWindow.current;
         Assert(Complete(Start(new JObject { ["max_events"] = 1 })) is SuccessResponse, "Prefix capture failed"); d = Dump();
         Assert((bool)d["truncated"] && (int)d["summary"]["dumpedEvents"] == 1, "Truncation not explicit");

@@ -489,7 +489,7 @@ namespace UnityCliConnector.Tools
                 target[name + "Name"] = target[name]?.Type == JTokenType.Integer ? new JValue(((UnityEngine.Rendering.RenderBufferLoadAction)target[name].Value<int>()).ToString()) : JValue.CreateNull();
             foreach (var name in new[] { "storeAction", "depthStoreAction" })
                 target[name + "Name"] = target[name]?.Type == JTokenType.Integer ? new JValue(((UnityEngine.Rendering.RenderBufferStoreAction)target[name].Value<int>()).ToString()) : JValue.CreateNull();
-            return new JObject
+            var result = new JObject
             {
                 ["index"] = index, ["status"] = "ok", ["type"] = Token(Member(descriptor, "m_Type", "type")),
                 ["name"] = api.Name(index), ["object"] = ObjectInfo(api.EventObject(index) ?? Member(descriptor, "m_Obj", "gameObject") as Object),
@@ -524,13 +524,42 @@ namespace UnityCliConnector.Tools
                 ["stencilRef"] = Read(data, missing, "m_StencilRef", "stencilRef"),
                 ["compute"] = Group(data, "m_ComputeShader"), ["rayTracing"] = Group(data, "m_RayTracing")
             };
+            // Unity's native event cache retains fields from previous events even
+            // with a fresh EventData instance and a matching frameEventIndex.
+            // Clear/dispatch shader names and draw counts are not current draws.
+            string type = (string)result["type"];
+            bool isCompute = type == "ComputeDispatch";
+            bool isRayTracing = type == "RayTracingDispatch";
+            bool isClear = type?.StartsWith("Clear", StringComparison.Ordinal) == true;
+            bool isDraw = new[]
+            {
+                "StaticBatch", "DynamicBatch", "Mesh", "DynamicGeometry", "GLDraw",
+                "DrawProcedural", "DrawProceduralIndirect", "DrawProceduralIndexed",
+                "DrawProceduralIndexedIndirect", "InstancedMesh",
+                "SRPBatch", "HybridBatch"
+            }.Contains(type);
+            if (!isDraw)
+            {
+                foreach (var name in new[] { "shader", "pass", "counts", "batchBreak", "blend", "raster", "depth", "stencil", "stencilRef" })
+                    result[name] = JValue.CreateNull();
+                if (!isCompute && !isRayTracing)
+                {
+                    result["keywords"] = new JArray();
+                    result["shaderProperties"] = JValue.CreateNull();
+                }
+            }
+            if (!isCompute) result["compute"] = JValue.CreateNull();
+            if (!isRayTracing) result["rayTracing"] = JValue.CreateNull();
+            if (!isClear) result["clear"] = JValue.CreateNull();
+            if (isCompute || isRayTracing) result["renderTarget"] = JValue.CreateNull();
+            return result;
         }
 
         public static JObject Summary(JArray events, int total, int selected)
         {
             var ok = events.OfType<JObject>().Where(e => (string)e["status"] == "ok").ToArray();
             JObject Histogram(IEnumerable<string> keys) => JObject.FromObject(keys.GroupBy(x => x).OrderBy(g => g.Key).ToDictionary(g => g.Key, g => g.Count()));
-            var targets = ok.Select(e => e["renderTarget"]).Where(t => t?["name"]?.Type == JTokenType.String)
+            var targets = ok.Select(e => e["renderTarget"] as JObject).Where(t => t?["name"]?.Type == JTokenType.String)
                 .Select(t => string.Join("|", new[] { "name", "width", "height", "format", "dimension", "cubemapFace", "count" }.Select(k => t[k]?.ToString() ?? ""))).ToArray();
             return new JObject
             {
@@ -538,15 +567,19 @@ namespace UnityCliConnector.Tools
                 ["successfulEvents"] = ok.Length, ["failedEvents"] = events.Count - ok.Length,
                 ["unvisitedEvents"] = selected - events.Count,
                 ["eventTypes"] = Histogram(events.Select(e => e["type"]?.ToString() ?? "unknown")),
-                ["batchBreakReasons"] = Histogram(ok.Where(e => !string.IsNullOrEmpty((string)e["shader"]?["real"]))
-                    .Select(e => (string)e["batchBreak"]?["reason"] ?? "unknown:" + e["batchBreak"]?["code"])),
-                ["shaders"] = Histogram(ok.Select(e => (string)e["shader"]?["real"]).Where(s => !string.IsNullOrEmpty(s))),
-                ["shaderPasses"] = Histogram(ok.Where(e => !string.IsNullOrEmpty((string)e["shader"]?["real"]))
+                ["batchBreakReasons"] = Histogram(ok.Where(e => !string.IsNullOrEmpty((string)(e["shader"] as JObject)?["real"]))
+                    .Select(e => (string)(e["batchBreak"] as JObject)?["reason"] ?? "unknown:" + (e["batchBreak"] as JObject)?["code"])),
+                ["shaders"] = Histogram(ok.Select(e => (string)(e["shader"] as JObject)?["real"]).Where(s => !string.IsNullOrEmpty(s))),
+                ["shaderPasses"] = Histogram(ok.Where(e => !string.IsNullOrEmpty((string)(e["shader"] as JObject)?["real"]))
                     .Select(e => e["shader"]["real"] + " / " + e["pass"]["name"] + " / " + e["pass"]["index"])),
+                ["computeDispatches"] = Histogram(ok.Where(e => e["compute"] is JObject)
+                    .Select(e => e["compute"]["name"] + " / " + e["compute"]["kernelName"])),
+                ["rayTracingDispatches"] = Histogram(ok.Where(e => e["rayTracing"] is JObject)
+                    .Select(e => e["rayTracing"]["shaderName"] + " / " + e["rayTracing"]["shaderRayGenName"])),
                 ["renderTargetTransitions"] = targets.Zip(targets.Skip(1), (a, b) => a != b).Count(changed => changed),
                 ["renderTargetTransitionSamples"] = targets.Length,
-                ["reportedDrawCalls"] = ok.Sum(e => (long?)e["counts"]?["drawCalls"] ?? 0),
-                ["notes"] = "Events include clear/dispatch/scopes, not one-to-one GPU draws. No GPU timings. Histograms cover successful selected events; render target transitions compare reported target descriptors, not native attachment identities."
+                ["reportedDrawCalls"] = ok.Sum(e => (long?)(e["counts"] as JObject)?["drawCalls"] ?? 0),
+                ["notes"] = "Events include clear/dispatch/scopes, not one-to-one GPU draws. No GPU timings. Shader/pass/batch/draw counts cover draw events only; compute/ray dispatches are separate. Histograms cover successful selected events; render target transitions compare reported target descriptors, not native attachment identities."
             };
         }
     }
