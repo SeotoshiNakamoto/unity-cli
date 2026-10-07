@@ -133,7 +133,7 @@ Unity 커넥터의 동작:
 1. Editor 시작 시 `localhost:8090`에 HTTP 서버를 열고
 2. `~/.unity-cli/instances/`에 프로젝트별 instance 파일을 기록하여 CLI가 연결할 수 있게 하고
 3. 0.5초마다 instance 파일에 현재 상태를 갱신하고 (heartbeat)
-4. 매 요청마다 리플렉션으로 `[UnityCliTool]` 클래스를 탐지하고
+4. Unity가 도메인별로 관리하는 `TypeCache`에서 `[UnityCliTool]` 클래스를 찾고
 5. 수신된 명령을 메인 스레드의 해당 핸들러로 라우팅하고
 6. 도메인 리로드(스크립트 재컴파일)에서도 유지되고
 7. 명령 도착 시 쓰로틀된 Editor를 깨우며 listener 장애를 자동 복구합니다

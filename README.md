@@ -133,7 +133,7 @@ The Unity Connector:
 1. Opens an HTTP server on `localhost:8090` when the Editor starts
 2. Writes a per-project instance file to `~/.unity-cli/instances/` so the CLI knows where to connect
 3. Updates the instance file every 0.5s with the current state (heartbeat)
-4. Discovers all `[UnityCliTool]` classes via reflection on each request
+4. Finds `[UnityCliTool]` classes through Unity's domain-managed `TypeCache`
 5. Routes incoming commands to the matching handler on the main thread
 6. Survives domain reloads (script recompilation)
 7. Wakes a throttled Editor when commands arrive and restarts a failed listener automatically

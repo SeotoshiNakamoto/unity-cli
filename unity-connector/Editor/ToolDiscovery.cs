@@ -3,12 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Newtonsoft.Json.Linq;
+using UnityEditor;
 
 namespace UnityCliConnector
 {
     /// <summary>
-    /// Finds [UnityCliTool] handlers on demand via reflection.
-    /// No caching, no registration — every call scans live.
+    /// Finds [UnityCliTool] handlers through Unity's domain-managed TypeCache.
     /// </summary>
     public static class ToolDiscovery
     {
@@ -17,38 +17,31 @@ namespace UnityCliConnector
             MethodInfo found = null;
             Type foundType = null;
 
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            foreach (var type in TypeCache.GetTypesWithAttribute<UnityCliToolAttribute>())
             {
-                Type[] types;
-                try { types = assembly.GetTypes(); }
-                catch (ReflectionTypeLoadException) { continue; }
+                if (type.IsClass == false) continue;
+                var attr = type.GetCustomAttribute<UnityCliToolAttribute>();
+                if (attr == null) continue;
 
-                foreach (var type in types)
+                var name = attr.Name ?? StringCaseUtility.ToSnakeCase(type.Name);
+                if (name != command) continue;
+
+                var method = type.GetMethod("HandleCommand",
+                    BindingFlags.Public | BindingFlags.Static, null,
+                    new[] { typeof(JObject) }, null);
+
+                if (method == null) continue;
+
+                if (found != null)
                 {
-                    if (type.IsClass == false) continue;
-                    var attr = type.GetCustomAttribute<UnityCliToolAttribute>();
-                    if (attr == null) continue;
-
-                    var name = attr.Name ?? StringCaseUtility.ToSnakeCase(type.Name);
-                    if (name != command) continue;
-
-                    var method = type.GetMethod("HandleCommand",
-                        BindingFlags.Public | BindingFlags.Static, null,
-                        new[] { typeof(JObject) }, null);
-
-                    if (method == null) continue;
-
-                    if (found != null)
-                    {
-                        UnityEngine.Debug.LogError(
-                            $"[UnityCliConnector] Duplicate tool '{command}': " +
-                            $"{foundType.FullName} and {type.FullName}. Using first found.");
-                        continue;
-                    }
-
-                    found = method;
-                    foundType = type;
+                    UnityEngine.Debug.LogError(
+                        $"[UnityCliConnector] Duplicate tool '{command}': " +
+                        $"{foundType.FullName} and {type.FullName}. Using first found.");
+                    continue;
                 }
+
+                found = method;
+                foundType = type;
             }
 
             return found;
@@ -59,40 +52,33 @@ namespace UnityCliConnector
             var tools = new List<object>();
             var nameToType = new Dictionary<string, Type>();
 
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            foreach (var type in TypeCache.GetTypesWithAttribute<UnityCliToolAttribute>())
             {
-                Type[] types;
-                try { types = assembly.GetTypes(); }
-                catch (ReflectionTypeLoadException) { continue; }
+                if (type.IsClass == false) continue;
+                var attr = type.GetCustomAttribute<UnityCliToolAttribute>();
+                if (attr == null) continue;
 
-                foreach (var type in types)
+                var name = attr.Name ?? StringCaseUtility.ToSnakeCase(type.Name);
+
+                if (nameToType.TryGetValue(name, out var existing))
                 {
-                    if (type.IsClass == false) continue;
-                    var attr = type.GetCustomAttribute<UnityCliToolAttribute>();
-                    if (attr == null) continue;
-
-                    var name = attr.Name ?? StringCaseUtility.ToSnakeCase(type.Name);
-
-                    if (nameToType.TryGetValue(name, out var existing))
-                    {
-                        UnityEngine.Debug.LogError(
-                            $"[UnityCliConnector] Duplicate tool name '{name}': " +
-                            $"{existing.FullName} and {type.FullName}. " +
-                            $"Rename one or remove the duplicate.");
-                        continue;
-                    }
-                    nameToType[name] = type;
-
-                    var paramsType = type.GetNestedType("Parameters");
-
-                    tools.Add(new
-                    {
-                        name,
-                        description = attr.Description ?? "",
-                        group = attr.Group ?? "",
-                        parameters = GetParameterSchema(paramsType),
-                    });
+                    UnityEngine.Debug.LogError(
+                        $"[UnityCliConnector] Duplicate tool name '{name}': " +
+                        $"{existing.FullName} and {type.FullName}. " +
+                        $"Rename one or remove the duplicate.");
+                    continue;
                 }
+                nameToType[name] = type;
+
+                var paramsType = type.GetNestedType("Parameters");
+
+                tools.Add(new
+                {
+                    name,
+                    description = attr.Description ?? "",
+                    group = attr.Group ?? "",
+                    parameters = GetParameterSchema(paramsType),
+                });
             }
 
             return tools;

@@ -82,13 +82,13 @@ A measured lightweight-key fixture run: 600 calls, +1 assembly; first compile
 ## Required actual-Unity preflight before deployment
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tests/exec/preflight.ps1 -UnityEditorData "C:/Program Files/Unity/Hub/Editor/6000.5.5f1/Editor/Data" -ProjectPath D:/Projects/ProjectD/client
+powershell -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File tests/exec/preflight.ps1 -UnityEditorData "C:/Program Files/Unity/Hub/Editor/6000.5.5f1/Editor/Data" -ProjectPath D:/Projects/ProjectD/client
 ```
 
 Compiles the whole connector using the actual project's Bee response files,
-including `UnityEditor.CoreModule`, replacing only the ExecuteCsharp source
-entry with the authoritative file and redirecting outputs to a disposable temp
-directory. It keeps actual references, defines, compiler options and analyzers.
+including `UnityEditor.CoreModule`, replacing the ExecuteCsharp and ToolDiscovery
+source entries with authoritative files and redirecting outputs to a disposable
+temp directory. Compiler processes run hidden. It keeps actual references, defines, compiler options and analyzers.
 Do not deploy if it fails. After copying the one `.cs` (preserve existing `.meta`),
 run `unity-cli --project D:/Projects/ProjectD/client editor refresh --compile`
 and check new `Logs/Editor.log` entries for `error CS`. On errors, restore the
