@@ -409,6 +409,12 @@ Profiler:
   profiler status                Show profiler state
   profiler clear                 Clear all captured frames
 
+Frame Debugger:
+  framedebug enable/disable/status   Control capture or inspect runtime API
+  framedebug dump --output frame.json  Dump all events and return summary
+  framedebug dump --max-events 100    Capture a prefix (explicit truncation)
+  Events are not one-to-one GPU draws; no GPU timings. State is restored.
+
 UI (UIToolkit):
   ui snapshot                         Capture UI element tree as JSON + screenshot
   ui snapshot --window Inspector      Target specific window
@@ -737,6 +743,39 @@ Examples:
   unity-cli reserialize
   unity-cli reserialize Assets/Prefabs/Player.prefab
   unity-cli reserialize Assets/Scenes/Main.unity Assets/Scenes/Lobby.unity
+`)
+	case "framedebug":
+		fmt.Print(`Usage: unity-cli framedebug <enable|disable|status|dump> [options]
+
+Dump one captured frame across Editor updates without blocking the main thread.
+  enable / disable      Control Frame Debugger (enable may pause Play Mode)
+  status                State, event count/limit/hash, and reflected runtime API
+  dump                  Enable, traverse events, save JSON, return summary
+
+Options for dump:
+  --output <path>        Editor-host path; relative to Unity project root
+                        Default: Temp/FrameDebugger/<timestamp>.json
+  --max-events N         Positive prefix limit; omit to capture all events
+  --capture-timeout N    Overall timeout in seconds (default 90)
+  --async                Return job_id; obtain final result with job <job_id>
+  --timeout <ms>         CLI request timeout; set longer than capture timeout
+
+Dump restores enabled state, selected limit, and Play Mode pause state, even
+on error. It closes only a Frame Debugger window it opened. Keep a Game view
+visible; Play Mode may be needed. Do not edit/refresh scenes or debugger state
+during capture. Per-event failures are recorded and traversal continues;
+timeout/frame changes save a partial dump and return an error.
+Summary: events, failures, batch reasons, shader/passes, reported draw calls,
+and render-target descriptor transitions (not native attachment identity).
+Events include clears, dispatches and scopes: NOT one-to-one GPU draws.
+No GPU timings; counts alone cannot prove a GPU performance improvement.
+Missing optional API fields are null and listed in missingFields.
+
+Examples:
+  unity-cli --project D:/Projects/ProjectD/client framedebug dump --output D:/tmp/frame.json
+  unity-cli framedebug dump --max-events 100
+  unity-cli framedebug dump --capture-timeout 300 --async
+  unity-cli job <job_id> --timeout 360000
 `)
 	case "profiler":
 		fmt.Print(`Usage: unity-cli profiler <subcommand> [options]

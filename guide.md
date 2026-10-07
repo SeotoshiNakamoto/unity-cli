@@ -43,6 +43,7 @@ Bash/CLI로 Unity Editor를 제어한다. MCP가 아니다. 멀티 Unity 인스�
 - `ui`: 게임 UI만 볼 때는 `--runtime`을 붙인다. `--interactive`는 Button/TextField/Label 중심으로 레이아웃 노이즈를 줄인다. `ui events`는 감시를 켜지 않고 대기 이벤트만 읽으므로, 화면 전환 감시는 먼저 `ui events start`가 필요하다.
 - `trace`: 오버로드는 첫 매칭일 수 있다. `--stack`은 비용이 크므로 필요한 경우만 쓴다. native/extern 메서드는 훅 불가.
 - `profiler`: 성능 분석이 필요할 때만 사용하고, 옵션은 먼저 `profiler --help`로 확인한다.
+- `framedebug`: `dump --output d:/tmp/frame.json`은 한 프레임을 순회하고 활성·선택·일시정지 상태를 복원한다. Game 뷰를 보이게 하고 캡처 중 씬·디버거·컴파일 상태를 바꾸지 않는다. 전후 비교는 씬·해상도·카메라 조건을 맞추고 `complete`, `truncated`, `failedEvents`를 먼저 확인한다. 이벤트에는 clear·dispatch가 섞여 있어 GPU 드로우와 1:1이 아니며 GPU 시간도 없다. 긴 캡처는 `--capture-timeout 300 --async` 후 `job <id> --timeout 360000`을 사용한다. 상세 필드는 `framedebug --help`로 확인한다.
 - `reserialize`: YAML 에셋을 텍스트 수정한 뒤 Unity serializer로 다시 저장할 때 사용한다.
 - `test`: Unity Test Framework 실행. PlayMode 테스트는 도메인 리로드 뒤 connector port를 다시 찾고 Editor `ready`와 bootstrap scene 삭제까지 기다린 뒤 반환한다.
 - `instances`: Unity 연결 없이 heartbeat를 조회한다. heartbeat에는 Connector 버전/listener 상태가 포함되고, CLI readiness 확인은 메인 스레드와 독립적인 `/health`를 쓴다. `kill`은 정확한 `--project` 또는 `--port`와 `--force`가 모두 있어야 한다.

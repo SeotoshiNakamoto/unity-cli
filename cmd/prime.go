@@ -38,6 +38,7 @@ func primeCmd(project string, port int) error {
 		sb.WriteString(guideContent)
 		sb.WriteString("\n\n")
 	}
+	sb.WriteString("Frame Debugger: `framedebug dump --output <Editor-host path>` captures a frame and restores state. Use matching scenes/resolution and check failedEvents/truncated before diffing. Events are not one-to-one GPU draws and have no GPU timings; see `framedebug --help`.\n\n")
 	sb.WriteString("Compiled Development/Release Player: use `player launch/call/wait/stop/kill`; Distribution builds should omit the bridge. Run `player --help` for the contract. `exec --async` makes the whole CLI command pollable; deferred C# callbacks remain blocked unless `--allow-deferred-code` is explicit.\n\n")
 
 	// 2. Connection status + tool list

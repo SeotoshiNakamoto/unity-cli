@@ -156,6 +156,7 @@ Unity 커넥터의 동작:
 | `screenshot` | Scene/Game 뷰를 PNG로 캡처 |
 | `ui` | UIToolkit UI 조회·조작 및 명시적 화면 전환 감시 |
 | `profiler` | 프로파일러 하이어라키 읽기, 녹화 제어 |
+| `framedebug` | 한 프레임의 Frame Debugger 이벤트·렌더 상태·요약을 JSON으로 저장 |
 | `list` | 사용 가능한 모든 도구와 파라미터 스키마 표시 |
 | `status` | Unity Editor 연결 상태 확인 |
 | `update` | CLI 바이너리 자동 업데이트 |
@@ -331,6 +332,29 @@ unity-cli profiler status
 # 캡쳐된 프레임 초기화
 unity-cli profiler clear
 ```
+
+### Frame Debugger
+
+```bash
+unity-cli --project D:/Projects/ProjectD/client framedebug status
+unity-cli --project D:/Projects/ProjectD/client framedebug enable
+unity-cli --project D:/Projects/ProjectD/client framedebug disable
+# 한 명령으로 활성화, 전체 이벤트 순회, JSON 저장, 상태 복원을 수행합니다.
+unity-cli --project D:/Projects/ProjectD/client framedebug dump --output D:/tmp/frame.json
+# 일부 이벤트만 캡처하면 truncated로 표시됩니다.
+unity-cli framedebug dump --max-events 100
+# 긴 캡처에는 기존 비동기 job 전송을 사용합니다.
+unity-cli framedebug dump --capture-timeout 300 --async
+unity-cli job <job_id> --timeout 360000
+```
+
+출력 경로는 **에디터가 실행되는 호스트**를 기준으로 하며, 상대 경로는 Unity 프로젝트 루트에서 해석합니다. 기본 경로는 `Temp/FrameDebugger/<timestamp>.json`입니다. 여러 Editor update에 걸쳐 실행하며 이벤트 상세 조회는 각각 2초, 전체 캡처는 기본 90초로 제한합니다. CLI는 기본적으로 최종 요약을 기다립니다. 긴 동기 캡처에서는 전역 `--timeout`(밀리초)을 `--capture-timeout`(초)보다 길게 설정하거나 `--async`/`job`을 사용합니다.
+
+버전이 명시된 JSON에는 이벤트 인덱스·타입·이름, 오브젝트 식별자와 계층/에셋 경로, original/real 셰이더, 패스·LightMode·인덱스, keyword와 셰이더 프로퍼티(float/int/vector/matrix/texture/buffer), 지오메트리·드로우 개수, 배칭 중단 사유, render target의 load/store/clear 값, blend/raster/depth/stencil 상태, 제공되는 compute/ray tracing dispatch 정보가 들어갑니다. `status`와 덤프에 실제 런타임 API 멤버를 기록하고, 없는 선택적 필드는 `null`과 `missingFields`로 표시합니다. buffer는 이름·플래그만 제공하며 내용을 읽지 않습니다. Unity의 실제 타입을 reflection으로 생성하여 class/ref struct와 InstanceID/EntityId 형식을 처리합니다. 1차 API 기준은 Unity **6000.5.5f1**입니다.
+
+Game 뷰를 보이게 하고 프레임이 렌더링되는 상태에서 실행합니다. Play Mode가 필요할 수 있습니다. 덤프는 원래 활성 상태·이벤트 선택·일시정지를 복원하고, 자신이 연 디버거 창만 닫습니다. Play Mode 진입·종료나 씬 저장은 하지 않습니다. 명시적 `enable`은 Unity 동작에 따라 Play Mode를 일시정지할 수 있습니다. 캡처 중에는 씬 수정·리컴파일·디버거 조작을 피합니다. 이벤트별 실패를 기록하고 계속 진행하며, 전체 타임아웃이나 이벤트 hash 변경은 오류와 부분 덤프를 반환합니다. 프레임을 확보하지 못하면 파일을 만들지 않습니다.
+
+응답과 JSON 요약에는 전체/실패 이벤트 수, 타입·배칭 사유별 개수, 셰이더 및 셰이더/패스별 개수, 보고된 드로우 개수 합계, 보고된 render target 속성의 전환 횟수가 들어갑니다. render target 전환은 native attachment 식별자가 아니라 이름·크기·포맷 등을 비교하므로 동명 타깃의 교체를 놓칠 수 있습니다. 요약은 선택된 이벤트 중 조회에 성공한 데이터를 기준으로 합니다. 전후 비교는 씬·카메라·해상도 조건을 맞추고 `complete`, `truncated`, 실패 개수를 먼저 확인합니다. **이벤트에는 clear·dispatch·scope가 포함되어 GPU 드로우와 1:1이 아니며 GPU 시간도 제공하지 않습니다.** 개수가 줄었다는 사실만으로 GPU 실행 시간이 개선되었다고 판단하지 않습니다.
 
 ### UIToolkit UI
 

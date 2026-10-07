@@ -156,6 +156,7 @@ Before compiling or reloading, the Connector records the state (`compiling`, `re
 | `screenshot` | Capture scene/game view as PNG |
 | `ui` | Observe and interact with UIToolkit UI; opt-in screen-change monitoring |
 | `profiler` | Read profiler hierarchy, control recording |
+| `framedebug` | Dump one Frame Debugger frame to JSON with rendering state and summaries |
 | `list` | Show all available tools with parameter schemas |
 | `status` | Show Unity Editor connection state |
 | `update` | Self-update the CLI binary |
@@ -331,6 +332,29 @@ unity-cli profiler status
 # Clear captured frames
 unity-cli profiler clear
 ```
+
+### Frame Debugger
+
+```bash
+unity-cli --project D:/Projects/ProjectD/client framedebug status
+unity-cli --project D:/Projects/ProjectD/client framedebug enable
+unity-cli --project D:/Projects/ProjectD/client framedebug disable
+# One command: enable, traverse all events, write JSON, restore state
+unity-cli --project D:/Projects/ProjectD/client framedebug dump --output D:/tmp/frame.json
+# Capture only a prefix, explicitly marked truncated
+unity-cli framedebug dump --max-events 100
+# Longer captures use the existing async job transport
+unity-cli framedebug dump --capture-timeout 300 --async
+unity-cli job <job_id> --timeout 360000
+```
+
+Output paths are on the **Editor host**, relative to the Unity project root. The default is `Temp/FrameDebugger/<timestamp>.json`. Capture runs across Editor updates (2-second detail timeout per event, 90-second overall default); the CLI normally waits for the final summary. For longer synchronous captures, set global `--timeout` (milliseconds) longer than `--capture-timeout` (seconds), or use `--async`/`job`.
+
+The versioned JSON records event index/type/name, object identity and hierarchy/asset path, original/real shaders, pass/LightMode/index, keywords and shader properties (float/int/vector/matrix/texture/buffer), geometry/draw counts, batching causes, render targets including load/store/clear, blend/raster/depth/stencil state, and available compute/ray-tracing dispatch fields. `status` and the dump include reflected runtime API members; missing optional fields are `null` and listed in `missingFields`. Buffer properties expose names/flags, not contents. The implementation uses actual Unity runtime types via reflection, including class/ref-struct and InstanceID/EntityId variants; Unity **6000.5.5f1** is the primary API baseline.
+
+Keep a Game view visible and render a frame (Play Mode may be required). Capture restores the original enabled state, event limit and pause state, and closes only a debugger window it opened. It never enters/exits Play Mode or saves scenes. Explicit `enable` follows Unity behavior and may pause Play Mode. Avoid editing scenes, recompiling or changing debugger controls during capture. Failed events are marked individually; overall timeout or a changed event hash returns an error with a partial JSON if a frame was acquired.
+
+The response and JSON include totals/failures, event-type and batching-reason histograms, shader and shader/pass counts, summed reported draw calls, and transitions between reported render-target descriptors. Transitions do not establish native attachment identity and can miss same-name targets. Summaries only cover the selected successful events. Compare identical scene/camera/resolution conditions; check `complete`, `truncated` and failure counts before diffing. **Frame Debugger events are not one-to-one GPU draws** (clear, dispatch and scopes are included), and **no GPU timings are available**. Reduced counts do not by themselves prove a GPU-time improvement.
 
 ### UIToolkit UI
 
