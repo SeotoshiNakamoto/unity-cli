@@ -48,6 +48,11 @@ func testCmd(args []string, send sendFn, port int) (*client.CommandResponse, err
 		params["filter"] = filter
 	}
 
+	if mode == "PlayMode" {
+		if err := removePreviousTestResults(port); err != nil {
+			return nil, err
+		}
+	}
 	resp, err := send("run_tests", params)
 	if err != nil {
 		return nil, err
@@ -81,10 +86,19 @@ func testCmd(args []string, send sendFn, port int) (*client.CommandResponse, err
 }
 
 func playModeRunStarted(resp *client.CommandResponse) bool {
-	if resp == nil || !resp.Success {
-		return false
+	return resp != nil && (resp.TransitionPending || (resp.Success && resp.Message == "running"))
+}
+
+func removePreviousTestResults(port int) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("cannot determine home directory: %w", err)
 	}
-	return resp.Message == "running" || strings.HasPrefix(resp.Message, "run_tests sent (connection closed before response)")
+	path := filepath.Join(home, ".unity-cli", "status", fmt.Sprintf("test-results-%d.json", port))
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("cannot discard previous PlayMode test results: %w", err)
+	}
+	return nil
 }
 
 func pollTestResults(port int) (*client.CommandResponse, error) {

@@ -42,17 +42,20 @@ namespace UnityCliConnector
                 CreatedAt = DateTime.Now,
             };
 
+            // HTTP admission and polling run on the main queue. Keep results and
+            // the Unity-aware serializer on that same context, including cancellation.
             tcs.Task.ContinueWith(t =>
             {
                 if (!s_Jobs.TryGetValue(id, out var entry))
                     return;
 
-                entry.Status = t.IsFaulted ? "failed" : "completed";
-                entry.Result = t.IsFaulted
+                entry.Status = t.IsFaulted || t.IsCanceled ? "failed" : "completed";
+                entry.Result = t.IsCanceled ? new ErrorResponse("Job cancelled by Editor shutdown or assembly reload.") : t.IsFaulted
                     ? new ErrorResponse(t.Exception?.InnerException?.Message ?? "Unknown error")
                     : t.Result;
                 s_Jobs[id] = entry;
-            });
+            }, System.Threading.CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.FromCurrentSynchronizationContext());
 
             return id;
         }

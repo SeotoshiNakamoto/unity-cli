@@ -15,11 +15,19 @@ namespace UnityCliConnector
     {
         static readonly SemaphoreSlim s_Lock = new(1, 1);
 
-        public static async Task<object> Dispatch(string command, JObject parameters)
+        public static Task<object> Dispatch(string command, JObject parameters) =>
+            Dispatch(command, parameters, CancellationToken.None);
+
+        public static Task<object> Dispatch(string command, JObject parameters, CancellationToken cancellationToken) =>
+            Dispatch(command, parameters, cancellationToken, null);
+
+        public static async Task<object> Dispatch(string command, JObject parameters, CancellationToken cancellationToken, Action executionStarting)
         {
-            await s_Lock.WaitAsync();
+            await s_Lock.WaitAsync(cancellationToken);
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
+                executionStarting?.Invoke();
                 return await DispatchInternal(command, parameters);
             }
             finally

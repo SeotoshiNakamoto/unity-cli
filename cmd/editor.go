@@ -19,19 +19,16 @@ func editorCmd(args []string, send sendFn, port int, project string, explicitPor
 	switch action {
 	case "play":
 		_, wait := flags["wait"]
-		return send("manage_editor", map[string]interface{}{
-			"action":              "play",
-			"wait_for_completion": wait,
-		})
+		return sendEditorTransition(send, "play", wait, port, project, explicitPort)
 
 	case "stop":
-		return send("manage_editor", map[string]interface{}{"action": "stop"})
+		return sendEditorTransition(send, "stop", false, port, project, explicitPort)
 
 	case "pause":
 		return send("manage_editor", map[string]interface{}{"action": "pause"})
 
 	case "quit":
-		return send("manage_editor", map[string]interface{}{"action": "quit"})
+		return sendEditorTransition(send, "quit", false, port, project, explicitPort)
 
 	case "refresh":
 		_, compile := flags["compile"]
@@ -43,6 +40,9 @@ func editorCmd(args []string, send sendFn, port int, project string, explicitPor
 			if err != nil {
 				return nil, err
 			}
+			if !resp.Success && !resp.TransitionPending {
+				return resp, nil
+			}
 			hasErrors, err := waitForReady(port, project, explicitPort, fenceTimestamp)
 			if err != nil {
 				return nil, err
@@ -50,6 +50,8 @@ func editorCmd(args []string, send sendFn, port int, project string, explicitPor
 			if hasErrors {
 				return nil, fmt.Errorf("compilation finished with errors (check unity-cli console)")
 			}
+			resp.Success = true
+			resp.TransitionPending = false
 			resp.Message = "Refresh and compilation completed."
 			return resp, nil
 		}

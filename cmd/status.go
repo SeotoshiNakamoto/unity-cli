@@ -80,11 +80,11 @@ func waitForAliveWithProbe(inst *client.Instance, project string, explicitPort i
 		return client.FindByProject(selector)
 	}
 
-	if current, err := resolve(); err == nil && time.Now().UnixMilli()-current.Timestamp < 1000 && reachable(current) {
+	if current, err := resolve(); err == nil && heartbeatAcceptsCommands(current, time.Now(), time.Second) && reachable(current) {
 		return current, nil
 	}
 
-	fmt.Fprintf(os.Stderr, "Waiting for Unity...\n")
+	fmt.Fprintf(os.Stderr, "Waiting for a fresh, command-accepting Unity heartbeat and listener...\n")
 
 	deadline := time.Now().Add(time.Duration(timeoutMs) * time.Millisecond)
 	for time.Now().Before(deadline) {
@@ -96,13 +96,32 @@ func waitForAliveWithProbe(inst *client.Instance, project string, explicitPort i
 		if unityGone(status) {
 			return nil, fmt.Errorf("unity process exited (pid %d)", status.PID)
 		}
-		if time.Now().UnixMilli()-status.Timestamp < 1500 && reachable(status) {
-			fmt.Fprintf(os.Stderr, "Unity is ready.\n")
+		if heartbeatAcceptsCommands(status, time.Now(), 1500*time.Millisecond) && reachable(status) {
+			fmt.Fprintf(os.Stderr, "Unity is accepting commands.\n")
 			return status, nil
 		}
 	}
 
 	return nil, fmt.Errorf("timed out waiting for Unity project %q", selector)
+}
+
+// Readiness is not listener liveness. Play/paused still accept commands; compile,
+// reload, refresh and mode transitions do not. Compilation's stricter barrier
+// additionally requires a witnessed busy cycle and stable ready heartbeats.
+func heartbeatAcceptsCommands(status *client.Instance, now time.Time, freshness time.Duration) bool {
+	if status == nil {
+		return false
+	}
+	age := now.Sub(time.UnixMilli(status.Timestamp))
+	if age < 0 || age >= freshness {
+		return false
+	}
+	switch status.State {
+	case "ready", "playing", "paused":
+		return true
+	default:
+		return false
+	}
 }
 
 func unityHTTPReachable(instance *client.Instance) bool {
@@ -201,7 +220,7 @@ func waitForReady(port int, project string, explicitPort int, fenceTimestamp int
 			return false, fmt.Errorf("unity process exited during compilation (pid %d)", status.PID)
 		}
 
-		reachable := status.State == "ready" && unityHTTPReachable(status)
+		reachable := status.State == "ready" && heartbeatAcceptsCommands(status, time.Now(), 1500*time.Millisecond) && unityHTTPReachable(status)
 		if done, hasErrors := barrier.observe(status, reachable); done {
 			if hasErrors {
 				fmt.Fprintf(os.Stderr, "Compilation finished with errors.\n")

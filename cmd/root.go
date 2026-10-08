@@ -130,7 +130,7 @@ func Execute() error {
 		var params map[string]interface{}
 		params, err = buildParams(subArgs, nil)
 		if err == nil {
-			resp, err = send(category, params)
+			resp, err = sendPassthroughTransition(category, params, send, inst.Port, inst.ProjectPath, flagPort)
 		}
 	}
 
@@ -413,7 +413,9 @@ Frame Debugger:
   framedebug enable/disable/status   Control capture or inspect runtime API
   framedebug dump --output frame.json  Dump all events and return summary
   framedebug dump --max-events 100    Capture a prefix (explicit truncation)
-  Events are not one-to-one GPU draws; no GPU timings. State is restored.
+  No windows opened/focused; existing windows get managed cleanup. State restored.
+  Ready-frame wait: fixed 10s per attempt; --capture-timeout only extends overall time.
+  Events are not one-to-one GPU draws; no GPU timings.
 
 UI (UIToolkit):
   ui snapshot                         Capture UI element tree as JSON + screenshot
@@ -760,11 +762,21 @@ Options for dump:
   --async                Return job_id; obtain final result with job <job_id>
   --timeout <ms>         CLI request timeout; set longer than capture timeout
 
-Dump restores enabled state, selected limit, and Play Mode pause state, even
-on error. It closes only a Frame Debugger window it opened. Keep a Game view
-visible; Play Mode may be needed. Do not edit/refresh scenes or debugger state
-during capture. Per-event failures are recorded and traversal continues;
-timeout/frame changes save a partial dump and return an error.
+Capture enables through the native utility without opening/focusing windows.
+Existing user windows remain open; managed data-view fields are initialized if
+needed, and disabling uses their managed cleanup method when available.
+Keep a rendering Game view; Play Mode may be needed.
+It pauses during capture, waits for 3 stable hash/count samples, and restarts
+from event zero up to 3 times when a frame changes (retryCount is returned).
+Successful and failed event reads, including failed name/object lookup, are
+fenced by hash/count checks; changed-frame events are discarded before restart.
+Enabled, limit and pause state are restored even on error. Per-event failures
+are recorded; exhausted retries/timeouts return an error and any partial dump.
+Repaint/update requests support background capture. For large/slow captures,
+increase --capture-timeout and the CLI timeout, or use --async. Waiting for a
+ready frame is separately fixed at 10 seconds per stabilization attempt,
+including the first frame; --capture-timeout does not extend that wait.
+Do not edit/refresh scenes or debugger state during capture.
 Summary: events, failures, batch reasons, shader/passes, reported draw calls,
 and render-target descriptor transitions (not native attachment identity).
 Shader/pass/batch/draw counts exclude clear/dispatch events. Dispatch summaries

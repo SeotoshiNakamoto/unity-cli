@@ -86,9 +86,10 @@ powershell -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File tests/ex
 ```
 
 Compiles the whole connector using the actual project's Bee response files,
-including `UnityEditor.CoreModule`, replacing the ExecuteCsharp and ToolDiscovery
-source entries with authoritative files and redirecting outputs to a disposable
-temp directory. Compiler processes run hidden. It keeps actual references, defines, compiler options and analyzers.
+including `UnityEditor.CoreModule`, replacing the ExecuteCsharp, ToolDiscovery,
+HttpServer, CommandRouter, AsyncJobManager and ManageFrameDebugger source entries with authoritative
+files and redirecting outputs to a disposable temp directory. Optional
+`-AdditionalSources` precompiles temporary native fixtures with the same references. Compiler processes run hidden. It keeps actual references, defines, compiler options and analyzers.
 Do not deploy if it fails. After copying the one `.cs` (preserve existing `.meta`),
 run `unity-cli --project D:/Projects/ProjectD/client editor refresh --compile`
 and check new `Logs/Editor.log` entries for `error CS`. On errors, restore the

@@ -138,7 +138,7 @@ Unity 커넥터의 동작:
 6. 도메인 리로드(스크립트 재컴파일)에서도 유지되고
 7. 명령 도착 시 쓰로틀된 Editor를 깨우며 listener 장애를 자동 복구합니다
 
-컴파일이나 리로드 직전에 상태(`compiling`, `reloading`)를 instance 파일에 기록합니다. heartbeat에는 Connector 버전과 listener 상태도 포함됩니다. readiness 확인은 Unity 메인 스레드 명령 큐를 기다리지 않는 가벼운 `GET /health` endpoint를 사용합니다. listener가 비정상 종료되면 프로젝트 선택 규칙을 바꾸지 않고 자동 재시도합니다.
+컴파일이나 리로드 직전에 상태(`compiling`, `reloading`)를 instance 파일에 기록합니다. heartbeat에는 Connector 버전과 listener 상태도 포함됩니다. 명령을 실행하려면 `ready`, `playing`, `paused` 중 하나를 나타내는 heartbeat가 1.5초 이내에 갱신되었고 listener에도 연결할 수 있어야 합니다. 미래 시각이나 오래된 heartbeat, 컴파일·리로드·refresh·모드 전환 상태는 HTTP 응답 여부와 관계없이 준비 상태로 인정하지 않습니다. 연결 확인에는 Unity 메인 스레드 명령 큐를 기다리지 않는 가벼운 `GET /health` endpoint를 사용합니다. 컴파일 완료는 busy 상태를 관측한 뒤 서로 다른 최신 `ready` heartbeat 두 개를 연속으로 확인해야 인정합니다. 명령을 자동으로 다시 보내지는 않습니다. listener가 비정상 종료되면 프로젝트 선택 규칙을 바꾸지 않고 자동 재시도합니다.
 
 ## 내장 명령어
 
@@ -350,11 +350,11 @@ unity-cli framedebug dump --capture-timeout 300 --async
 unity-cli job <job_id> --timeout 360000
 ```
 
-출력 경로는 **에디터가 실행되는 호스트**를 기준으로 하며, 상대 경로는 Unity 프로젝트 루트에서 해석합니다. 기본 경로는 `Temp/FrameDebugger/<timestamp>.json`입니다. 여러 Editor update에 걸쳐 실행하며 이벤트 상세 조회는 각각 2초, 전체 캡처는 기본 90초로 제한합니다. CLI는 기본적으로 최종 요약을 기다립니다. 긴 동기 캡처에서는 전역 `--timeout`(밀리초)을 `--capture-timeout`(초)보다 길게 설정하거나 `--async`/`job`을 사용합니다.
+출력 경로는 **에디터가 실행되는 호스트**를 기준으로 하며, 상대 경로는 Unity 프로젝트 루트에서 해석합니다. 기본 경로는 `Temp/FrameDebugger/<timestamp>.json`입니다. 여러 Editor update에 걸쳐 실행하며 이벤트 상세 조회는 각각 2초, 전체 캡처는 기본 90초로 제한합니다. CLI는 기본적으로 최종 요약을 기다립니다. 첫 프레임을 포함해 각 안정화 시도에서 준비된 프레임을 기다리는 시간은 별도로 10초로 제한하며, `--capture-timeout`을 늘려도 이 대기는 늘어나지 않습니다. 긴 동기 캡처에서는 전역 `--timeout`(밀리초)을 `--capture-timeout`(초)보다 길게 설정하거나 `--async`/`job`을 사용합니다.
 
 버전이 명시된 JSON에는 이벤트 인덱스·타입·이름, 오브젝트 식별자와 계층/에셋 경로, original/real 셰이더, 패스·LightMode·인덱스, keyword와 셰이더 프로퍼티(float/int/vector/matrix/texture/buffer), 지오메트리·드로우 개수, 배칭 중단 사유, render target의 load/store/clear 값, blend/raster/depth/stencil 상태, 제공되는 compute/ray tracing dispatch 정보가 들어갑니다. `status`와 덤프에 실제 런타임 API 멤버를 기록하고, 없는 선택적 필드는 `null`과 `missingFields`로 표시합니다. Unity는 clear/dispatch 이벤트에도 직전 드로우의 그래픽 데이터를 남길 수 있으므로, 이벤트 타입에 해당하지 않는 필드는 `null` 또는 빈 keyword로 표시합니다. 셰이더·패스·배칭·드로우 개수 요약은 드로우 이벤트만 집계하며 compute/ray dispatch는 별도로 집계합니다. buffer는 이름·플래그만 제공하며 내용을 읽지 않습니다. Unity의 실제 타입을 reflection으로 생성하여 class/ref struct와 InstanceID/EntityId 형식을 처리합니다. 1차 API 기준은 Unity **6000.5.5f1**입니다.
 
-Game 뷰를 보이게 하고 프레임이 렌더링되는 상태에서 실행합니다. Play Mode가 필요할 수 있습니다. 덤프는 원래 활성 상태·이벤트 선택·일시정지를 복원하고, 자신이 연 디버거 창만 닫습니다. Play Mode 진입·종료나 씬 저장은 하지 않습니다. 명시적 `enable`은 Unity 동작에 따라 Play Mode를 일시정지할 수 있습니다. 캡처 중에는 씬 수정·리컴파일·디버거 조작을 피합니다. 이벤트별 실패를 기록하고 계속 진행하며, 전체 타임아웃이나 이벤트 hash 변경은 오류와 부분 덤프를 반환합니다. 프레임을 확보하지 못하면 파일을 만들지 않습니다.
+Game 뷰가 렌더링되는 상태에서 실행합니다. Play Mode가 필요할 수 있습니다. `enable`과 `dump`는 native utility로 캡처를 활성화하며 창을 열거나 포커스를 바꾸거나 Game 뷰의 `ShowTab`을 호출하지 않습니다. 사용자가 열어 둔 디버거 창은 유지하되 필요한 managed 데이터 뷰 필드를 초기화합니다. 비활성화할 때 기존 창의 managed 정리 메서드가 있으면 사용하고, 없으면 native utility를 사용합니다. 덤프 중에는 게임을 명시적으로 일시정지하고 전체 프레임의 hash/count가 세 번 같아질 때까지 기다립니다. 성공·실패 이벤트 조회 전후에 hash/count를 검사하며, 실패 이벤트의 이름·오브젝트 조회도 검사 범위에 포함합니다. 프레임 변경을 감지하면 저장 대기 중인 이벤트를 버리고 원래 타임아웃 안에서 최대 세 번 처음부터 재시도하므로 서로 다른 시도의 이벤트를 합치지 않습니다. 응답과 덤프에 `retryCount`, `maxRetries`, `stableSamplesRequired`, `pausedDuringCapture`, `frameChanges`가 추가됩니다. repaint/player-loop 요청으로 백그라운드 갱신을 유도하며, 크거나 느린 순회는 전체 타임아웃을 늘려 실행하되, 준비된 프레임은 별도의 고정 10초 대기 안에 확보해야 합니다. 오류가 발생해도 원래 활성 상태·native limit·일시정지를 복원하며(열려 있던 디버거 창의 목록 선택 강조는 복원하지 않는 알려진 한계가 있습니다) Play Mode 진입·종료나 씬 저장은 하지 않습니다. 캡처 중 씬 수정·리컴파일·디버거 조작을 피합니다. 이벤트별 실패를 기록하고 계속 진행하며 재시도 소진이나 전체 타임아웃은 오류와 부분 덤프를 반환합니다. 프레임을 확보하지 못하면 파일을 만들지 않습니다.
 
 응답과 JSON 요약에는 전체/실패 이벤트 수, 타입·배칭 사유별 개수, 셰이더 및 셰이더/패스별 개수, 보고된 드로우 개수 합계, 보고된 render target 속성의 전환 횟수가 들어갑니다. render target 전환은 native attachment 식별자가 아니라 이름·크기·포맷 등을 비교하므로 동명 타깃의 교체를 놓칠 수 있습니다. 요약은 선택된 이벤트 중 조회에 성공한 데이터를 기준으로 합니다. 전후 비교는 씬·카메라·해상도 조건을 맞추고 `complete`, `truncated`, 실패 개수를 먼저 확인합니다. **이벤트에는 clear·dispatch·scope가 포함되어 GPU 드로우와 1:1이 아니며 GPU 시간도 제공하지 않습니다.** 개수가 줄었다는 사실만으로 GPU 실행 시간이 개선되었다고 판단하지 않습니다.
 

@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$UnityEditorData,
-    [Parameter(Mandatory = $true)][string]$ProjectPath
+    [Parameter(Mandatory = $true)][string]$ProjectPath,
+    [string[]]$AdditionalSources = @()
 )
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot/../tooldiscovery/hidden.ps1"
@@ -17,10 +18,15 @@ Push-Location $project
 try {
     $text = [regex]::Replace($text, '(?m)^-out:.*$', ('-out:"' + "$temp/UnityCliConnector.Editor.dll" + '"'))
     $text = [regex]::Replace($text, '(?m)^-refout:.*$', ('-refout:"' + "$temp/UnityCliConnector.Editor.ref.dll" + '"'))
-    foreach ($file in @('Tools/ExecuteCsharp.cs', 'ToolDiscovery.cs')) {
+    foreach ($file in @('Tools/ExecuteCsharp.cs', 'ToolDiscovery.cs', 'HttpServer.cs', 'AsyncJobManager.cs', 'CommandRouter.cs', 'Tools/ManageFrameDebugger.cs')) {
         $source = [regex]::Match($text, ('(?m)^"[^"]*/Editor/' + [regex]::Escape($file) + '"\r?$'))
         if (!$source.Success) { throw "$file source entry missing" }
         $text = $text.Replace($source.Value.TrimEnd("`r"), ('"' + "$root/unity-connector/Editor/$file" + '"'))
+    }
+    foreach ($source in $AdditionalSources) {
+        $existing = [regex]::Match($text, ('(?m)^"[^"]*/Editor/' + [regex]::Escape([IO.Path]::GetFileName($source)) + '"\r?$'))
+        if ($existing.Success) { $text = $text.Replace($existing.Value.TrimEnd("`r"), ('"' + $source + '"')) }
+        else { $text += "`n`"$source`"`n" }
     }
     $testRsp = Join-Path $temp 'preflight.rsp'
     [IO.File]::WriteAllText($testRsp, $text, (New-Object Text.UTF8Encoding($false)))

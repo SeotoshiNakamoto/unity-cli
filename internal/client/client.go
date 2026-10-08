@@ -39,6 +39,9 @@ type CommandResponse struct {
 	Success bool            `json:"success"`
 	Message string          `json:"message"`
 	Data    json.RawMessage `json:"data,omitempty"`
+	// TransitionPending is transport evidence, not a successful command result.
+	// Callers must confirm the requested state/result without resending.
+	TransitionPending bool `json:"-"`
 }
 
 // isProcessDead returns true only when the process is confirmed to not exist.
@@ -323,7 +326,41 @@ func Send(inst *Instance, command string, params interface{}, timeoutMs int) (*C
 	if err != nil {
 		return nil, fmt.Errorf("cannot connect to Unity at port %d: %v", inst.Port, err)
 	}
-	return decodeResponse(resp, command, true)
+	return decodeResponse(resp, command, allowsEmptyTransition(command, body))
+}
+
+// Empty acknowledgments are only a compatibility concession for operations
+// whose implementation intentionally crosses a domain/process transition. This
+// is NOT permission to retry a command with unknown execution/side effects.
+func allowsEmptyTransition(command string, body []byte) bool {
+	var request struct {
+		Params map[string]interface{} `json:"params"`
+	}
+	if err := json.Unmarshal(body, &request); err != nil {
+		return false
+	}
+	if value, present := request.Params["async"]; present {
+		async, boolean := value.(bool)
+		if !boolean || async {
+			return false // Only absent or explicit false is unambiguously synchronous.
+		}
+	}
+	text := func(key string) string {
+		value, _ := request.Params[key].(string)
+		return value
+	}
+	switch command {
+	case "manage_editor":
+		switch strings.ToLower(text("action")) {
+		case "play", "stop", "quit":
+			return true
+		}
+	case "refresh_unity":
+		return strings.EqualFold(text("compile"), "request")
+	case "run_tests":
+		return strings.EqualFold(text("mode"), "PlayMode")
+	}
+	return false
 }
 
 // Health checks the connector listener without dispatching work to Unity's
@@ -343,8 +380,25 @@ func decodeResponse(resp *http.Response, operation string, allowEmpty bool) (*Co
 
 	if resp.StatusCode != http.StatusOK {
 		var body []byte
-		body, _ = io.ReadAll(resp.Body)
+		var readErr error
+		body, readErr = io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("cannot read Unity %s response: %w", operation, readErr)
+		}
 		if len(body) > 0 {
+			var result CommandResponse
+			if err := json.Unmarshal(body, &result); err == nil && result.Message != "" {
+				if allowEmpty && resp.StatusCode == http.StatusServiceUnavailable && !result.Success {
+					var evidence struct {
+						ExecutionState string `json:"execution_state"`
+					}
+					if json.Unmarshal(result.Data, &evidence) == nil && evidence.ExecutionState == "started" {
+						result.TransitionPending = true
+						return &result, nil
+					}
+				}
+				return nil, fmt.Errorf("HTTP %d from Unity: %s", resp.StatusCode, result.Message)
+			}
 			return nil, fmt.Errorf("HTTP %d from Unity: %s", resp.StatusCode, string(body))
 		}
 		return nil, fmt.Errorf("HTTP %d from Unity (operation: %s)", resp.StatusCode, operation)
@@ -355,14 +409,15 @@ func decodeResponse(resp *http.Response, operation string, allowEmpty bool) (*Co
 		return nil, fmt.Errorf("cannot read Unity %s response: %w", operation, err)
 	}
 	if len(respBody) == 0 && allowEmpty {
-		// Some commands (e.g. play mode entry) close the connection before responding.
+		// Legacy empty replies carry no execution proof. They may only enter a
+		// transition-specific verification path, never become success themselves.
 		return &CommandResponse{
-			Success: true,
-			Message: fmt.Sprintf("%s sent (connection closed before response)", operation),
+			TransitionPending: true,
+			Message:           fmt.Sprintf("%s response lost; transition must be verified (no resend)", operation),
 		}, nil
 	}
 	if len(respBody) == 0 {
-		return nil, fmt.Errorf("empty response from Unity %s endpoint", operation)
+		return nil, fmt.Errorf("empty response from Unity %s: execution could not be confirmed; do not automatically retry commands with side effects", operation)
 	}
 
 	var result CommandResponse

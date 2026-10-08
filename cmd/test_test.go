@@ -47,7 +47,7 @@ func TestWaitForPlayModeCleanupWaitsForReadyEditorAndBootstrapDeletion(t *testin
 func TestPlayModeRunStartedAcceptsDomainReloadConnectionClose(t *testing.T) {
 	for _, response := range []*client.CommandResponse{
 		{Success: true, Message: "running"},
-		{Success: true, Message: "run_tests sent (connection closed before response)"},
+		{TransitionPending: true, Message: "outcome is unknown"},
 	} {
 		if !playModeRunStarted(response) {
 			t.Fatalf("expected PlayMode run to start for %#v", response)
