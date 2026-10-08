@@ -147,7 +147,7 @@ Unity 커넥터의 동작:
 | `test` | EditMode/PlayMode 테스트 실행 |
 | `menu` | Unity 메뉴 아이템을 경로로 실행 |
 | `reserialize` | Unity 시리얼라이저를 통해 에셋 재직렬화 |
-| `screenshot` | Scene/Game 뷰를 PNG로 캡처 |
+| `screenshot` | Scene/Game 뷰를 PNG로 캡처 (Game 뷰는 실제 렌더 해상도) |
 | `ui` | UIToolkit UI 조회·조작 및 명시적 화면 전환 감시 |
 | `profiler` | 프로파일러 하이어라키 읽기, 녹화 제어 |
 | `framedebug` | 한 프레임의 Frame Debugger 이벤트·렌더 상태·요약을 JSON으로 저장 |

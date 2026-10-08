@@ -366,7 +366,7 @@ Menu:
 
 Screenshot:
   screenshot                          Capture scene view (default)
-  screenshot --view game              Capture game view
+  screenshot --view game              Capture game view at its render resolution
   screenshot --output_path <path>     Custom output path
 
 Reserialize:
@@ -703,22 +703,27 @@ Note: File/Quit is blocked for safety.
 
 Capture a screenshot of the Unity editor.
 
+--view game reads the Game view's render target, so the image has the game
+resolution (e.g. 1920x1080) regardless of the window size or zoom, without
+the toolbar. scene and window capture the on-screen window buffer, so their
+size and sharpness follow the window. Use --view window --window_type GameView
+to capture the Game window as it appears on screen.
+
 Options:
   --view <mode>         scene (default), game, window
   --action <action>     capture (default), list_windows
   --window_type <name>  EditorWindow type name (e.g. InspectorWindow, ConsoleWindow)
   --window_title <text> Find window by title text (substring match)
-  --width <N>           Image width in pixels (default: 1920 for scene/game,
-                        window actual size for window)
-  --height <N>          Image height in pixels (default: 1080 for scene/game,
-                        window actual size for window)
+  --width <N>           Resize the result to this width (default: captured size)
+  --height <N>          Resize the result to this height (default: captured size)
+                        Resizing above the captured size only upscales (blurry).
   --output_path <path>  Output path, absolute or relative to project root
                         (default: Screenshots/screenshot.png)
 
 Examples:
   unity-cli screenshot
   unity-cli screenshot --view game
-  unity-cli screenshot --view scene --width 3840 --height 2160
+  unity-cli screenshot --view game --width 960 --height 540
   unity-cli screenshot --view window --window_type InspectorWindow
   unity-cli screenshot --view window --window_title "Console"
   unity-cli screenshot --action list_windows

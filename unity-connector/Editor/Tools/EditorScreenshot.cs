@@ -29,10 +29,10 @@ namespace UnityCliConnector.Tools
             [ToolParameter("Find window by title text (substring match)", Required = false)]
             public string WindowTitle { get; set; }
 
-            [ToolParameter("Override width (default 1920 for scene/game, window actual size for window)", Required = false)]
+            [ToolParameter("Resize the result to this width (default: captured size; game uses its render resolution)", Required = false)]
             public int Width { get; set; }
 
-            [ToolParameter("Override height (default 1080 for scene/game, window actual size for window)", Required = false)]
+            [ToolParameter("Resize the result to this height (default: captured size; game uses its render resolution)", Required = false)]
             public int Height { get; set; }
 
             [ToolParameter("Output file path, absolute or relative to project root (default: Screenshots/screenshot.png)", Required = false)]
@@ -65,6 +65,9 @@ namespace UnityCliConnector.Tools
                         @params["window_type"] = "SceneView";
                         return CaptureEditorWindow(p, outputPath);
                     case "game":
+                        var gameCapture = CaptureGameTarget(p, outputPath);
+                        if (gameCapture != null)
+                            return gameCapture;
                         @params["window_type"] = "GameView";
                         return CaptureEditorWindow(p, outputPath);
                     case "window":
@@ -225,22 +228,125 @@ namespace UnityCliConnector.Tools
             }
         }
 
-        private static Texture2D ResizeTexture(Texture2D source, int newWidth, int newHeight)
+        // Reads the Game view's render target at the game resolution instead of the
+        // on-screen window buffer, so the result does not depend on the window size,
+        // zoom, or toolbar. Returns null when the target is unavailable so the caller
+        // can fall back to the window capture.
+        private static object CaptureGameTarget(ToolParams p, string outputPath)
         {
+            const BindingFlags kFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+
+            var gameViewType = typeof(EditorWindow).Assembly.GetType("UnityEditor.GameView");
+            if (gameViewType == null)
+                return null;
+
+            var views = Resources.FindObjectsOfTypeAll<EditorWindow>().Where(w => gameViewType.IsInstanceOfType(w)).ToArray();
+            if (views.Length == 0)
+                return null;
+            var window = views.FirstOrDefault(w => w.hasFocus) ?? views[0];
+
+            FieldInfo targetField = null;
+            for (var t = gameViewType; t != null && targetField == null; t = t.BaseType)
+                targetField = t.GetField("m_TargetTexture", kFlags | BindingFlags.DeclaredOnly);
+            if (targetField == null)
+                return null;
+
+            // Render the view synchronously so the target holds the current frame.
+            // A hidden tab does not render, so bring it to the front of its dock
+            // first. Neither call activates the Unity application window.
+            var hostView = typeof(EditorWindow).GetField("m_Parent", kFlags)?.GetValue(window);
+            var actualView = hostView?.GetType().GetProperty("actualView", kFlags)?.GetValue(hostView);
+            if (hostView != null && !ReferenceEquals(actualView, window))
+                window.ShowTab();
+            window.Repaint();
+            var sendEvent = hostView?.GetType().GetMethod("SendEvent", kFlags, null, new[] { typeof(Event) }, null);
+            if (sendEvent != null)
+            {
+                try { sendEvent.Invoke(hostView, new object[] { new Event { type = EventType.Repaint } }); } catch { }
+            }
+
+            var target = targetField.GetValue(window) as RenderTexture;
+            if (target == null || !target.IsCreated() || target.width <= 0 || target.height <= 0)
+                return null;
+
+            int width = target.width;
+            int height = target.height;
             RenderTexture rt = null;
+            Texture2D tex = null;
+            var prev = RenderTexture.active;
             try
             {
-                rt = RenderTexture.GetTemporary(newWidth, newHeight);
+                // Blit converts any target format (HDR, linear) into 8-bit
+                // display-encoded pixels; ReadPixels then copies them unchanged.
+                // The view target is stored top-down on graphics APIs whose UV
+                // origin is at the top, so flip it while copying.
+                rt = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+                if (SystemInfo.graphicsUVStartsAtTop)
+                    Graphics.Blit(target, rt, new Vector2(1f, -1f), new Vector2(0f, 1f));
+                else
+                    Graphics.Blit(target, rt);
+                RenderTexture.active = rt;
+                tex = new Texture2D(width, height, TextureFormat.RGBA32, false, false);
+                tex.ReadPixels(new Rect(0, 0, width, height), 0, 0);
+                tex.Apply();
+                RenderTexture.active = prev;
+                RenderTexture.ReleaseTemporary(rt);
+                rt = null;
+
+                var userWidth = p.GetInt("width");
+                var userHeight = p.GetInt("height");
+                if (userWidth.HasValue || userHeight.HasValue)
+                {
+                    int targetW = userWidth ?? width;
+                    int targetH = userHeight ?? height;
+                    if (targetW != width || targetH != height)
+                        tex = ResizeTexture(tex, targetW, targetH);
+                }
+
+                File.WriteAllBytes(outputPath, tex.EncodeToPNG());
+
+                return new SuccessResponse($"Screenshot saved to {outputPath}", new
+                {
+                    path = outputPath,
+                    width = tex.width,
+                    height = tex.height,
+                    source = "game_render_target",
+                    render_width = width,
+                    render_height = height,
+                    window_type = window.GetType().Name,
+                    window_title = window.titleContent.text
+                });
+            }
+            finally
+            {
+                RenderTexture.active = prev;
+                if (rt != null) RenderTexture.ReleaseTemporary(rt);
+                if (tex != null) UnityEngine.Object.DestroyImmediate(tex);
+            }
+        }
+
+        private static Texture2D ResizeTexture(Texture2D source, int newWidth, int newHeight)
+        {
+            // Captured pixels are already display-encoded. Match the source's sRGB flag
+            // on every hop so a Linear color space project does not gamma-encode
+            // them a second time.
+            var srgb = source.isDataSRGB;
+            RenderTexture rt = null;
+            var prev = RenderTexture.active;
+            try
+            {
+                rt = RenderTexture.GetTemporary(newWidth, newHeight, 0, RenderTextureFormat.ARGB32,
+                    srgb ? RenderTextureReadWrite.sRGB : RenderTextureReadWrite.Linear);
                 Graphics.Blit(source, rt);
                 RenderTexture.active = rt;
-                var result = new Texture2D(newWidth, newHeight, TextureFormat.RGBA32, false);
+                var result = new Texture2D(newWidth, newHeight, TextureFormat.RGBA32, false, !srgb);
                 result.ReadPixels(new Rect(0, 0, newWidth, newHeight), 0, 0);
                 result.Apply();
                 return result;
             }
             finally
             {
-                RenderTexture.active = null;
+                RenderTexture.active = prev;
                 if (rt != null) RenderTexture.ReleaseTemporary(rt);
                 UnityEngine.Object.DestroyImmediate(source);
             }

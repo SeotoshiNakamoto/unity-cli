@@ -147,7 +147,7 @@ Before compiling or reloading, the Connector records the state (`compiling`, `re
 | `test` | Run EditMode/PlayMode tests |
 | `menu` | Execute any Unity menu item by path |
 | `reserialize` | Re-serialize assets through Unity's serializer |
-| `screenshot` | Capture scene/game view as PNG |
+| `screenshot` | Capture scene/game view as PNG (game view at its render resolution) |
 | `ui` | Observe and interact with UIToolkit UI; opt-in screen-change monitoring |
 | `profiler` | Read profiler hierarchy, control recording |
 | `framedebug` | Dump one Frame Debugger frame to JSON with rendering state and summaries |

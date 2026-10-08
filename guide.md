@@ -39,7 +39,7 @@ Bash/CLI로 Unity Editor를 제어한다. MCP가 아니다. 멀티 Unity 인스�
 
 - `exec`: Unity 메인 스레드에서 C# 실행. UnityEngine, UnityEditor, 로드된 어셈블리에 접근 가능. `Object`가 모호하면 `UnityEngine.Object`를 명시한다. 지연 callback/API는 기본 차단되며 `--async`와 `--allow-deferred-code`는 서로 다른 옵션이다.
 - `console`: 기본은 에러/경고 확인. 컴파일 에러는 `editor refresh` 뒤 `console --type error`로 본다.
-- `screenshot`: 항상 `d:/tmp/screenshot.png`에 덮어쓰고 이미지 read 도구로 확인한다. 특정 창은 `screenshot --action list_windows` 후 window 캡처를 사용한다.
+- `screenshot`: 항상 `d:/tmp/screenshot.png`에 덮어쓰고 이미지 read 도구로 확인한다. 게임 화면은 `--view game`이 Game 창 크기와 무관하게 실제 렌더 해상도로 찍는다. scene/window는 화면에 보이는 창 크기 그대로라서 `--width`로 키우면 흐려진다. 특정 창은 `screenshot --action list_windows` 후 window 캡처를 사용한다.
 - `ui`: 게임 UI만 볼 때는 `--runtime`을 붙인다. `--interactive`는 Button/TextField/Label 중심으로 레이아웃 노이즈를 줄인다. `ui events`는 감시를 켜지 않고 대기 이벤트만 읽으므로, 화면 전환 감시는 먼저 `ui events start`가 필요하다.
 - `trace`: 오버로드는 첫 매칭일 수 있다. `--stack`은 비용이 크므로 필요한 경우만 쓴다. native/extern 메서드는 훅 불가.
 - `profiler`: 성능 분석이 필요할 때만 사용하고, 옵션은 먼저 `profiler --help`로 확인한다.
