@@ -61,16 +61,12 @@ func Execute() error {
 	case "version", "--version", "-v":
 		fmt.Println("unity-cli " + Version)
 		return nil
-	case "update":
-		return updateCmd(subArgs)
 	case "status":
 		inst, err := client.DiscoverInstance(flagProject, flagPort)
 		if err != nil {
 			return err
 		}
-		statusErr := statusCmd(inst)
-		printUpdateNotice()
-		return statusErr
+		return statusCmd(inst)
 	case "instances":
 		return instancesCmd(subArgs, flagProject, flagPort, flagTimeout)
 	case "player":
@@ -139,8 +135,6 @@ func Execute() error {
 	}
 
 	printResponse(resp)
-
-	printUpdateNotice()
 
 	if !resp.Success {
 		os.Exit(1)
@@ -448,10 +442,6 @@ Custom Tools:
 Status:
   status                        Show Unity Editor state (ready, compiling, etc.)
   instances list                Show every registered Unity Editor instance
-
-Update:
-  update                        Update to the latest version
-  update --check                Check for updates without installing
 
 Global Options:
   --port <N>          Connect to specific Unity port (skip auto-discovery)
@@ -976,18 +966,6 @@ Reports "not responding" if heartbeat is older than 3 seconds.
 
 Example:
   unity-cli status
-`)
-	case "update":
-		fmt.Print(`Usage: unity-cli update [options]
-
-Update the CLI binary to the latest release from GitHub.
-
-Options:
-  --check              Check for updates without installing
-
-Examples:
-  unity-cli update
-  unity-cli update --check
 `)
 	case "custom-tools", "custom", "tools":
 		fmt.Print(`How to write custom tools for unity-cli

@@ -50,13 +50,7 @@ Supported platforms: Linux (amd64, arm64), macOS (Intel, Apple Silicon), Windows
 
 ### Update
 
-```bash
-# Update to the latest version
-unity-cli update
-
-# Check for updates without installing
-unity-cli update --check
-```
+This fork has no self-update command. Rebuild the binary from this repository and deploy it to the project that uses it.
 
 ## Unity Setup
 
@@ -159,7 +153,6 @@ Before compiling or reloading, the Connector records the state (`compiling`, `re
 | `framedebug` | Dump one Frame Debugger frame to JSON with rendering state and summaries |
 | `list` | Show all available tools with parameter schemas |
 | `status` | Show Unity Editor connection state |
-| `update` | Self-update the CLI binary |
 
 ### Editor Control
 

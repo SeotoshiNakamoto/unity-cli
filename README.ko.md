@@ -50,13 +50,7 @@ chmod +x unity-cli && sudo mv unity-cli /usr/local/bin/
 
 ### 업데이트
 
-```bash
-# 최신 버전으로 자동 업데이트
-unity-cli update
-
-# 새 버전 확인만
-unity-cli update --check
-```
+이 포크에는 자동 업데이트 명령이 없습니다. 이 저장소에서 바이너리를 다시 빌드한 뒤 사용하는 프로젝트에 배포합니다.
 
 ## Unity 설정
 
@@ -159,7 +153,6 @@ Unity 커넥터의 동작:
 | `framedebug` | 한 프레임의 Frame Debugger 이벤트·렌더 상태·요약을 JSON으로 저장 |
 | `list` | 사용 가능한 모든 도구와 파라미터 스키마 표시 |
 | `status` | Unity Editor 연결 상태 확인 |
-| `update` | CLI 바이너리 자동 업데이트 |
 
 ### Editor 제어
 
