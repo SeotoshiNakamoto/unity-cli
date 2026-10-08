@@ -101,7 +101,9 @@ func Execute() error {
 		}
 		resp, err = testCmd(subArgs, testSend, inst.Port)
 	case "exec":
-		subArgs = readStdinIfPiped(subArgs)
+		if !execHasCode(subArgs) {
+			subArgs = readStdinIfPiped(subArgs)
+		}
 		subArgs, err = expandFileFlag(subArgs)
 		if err != nil {
 			return err
@@ -250,6 +252,25 @@ func buildParams(args []string, base map[string]interface{}) (map[string]interfa
 	}
 
 	return params, nil
+}
+
+// execHasCode reports whether exec already received code as a positional
+// argument or through --file. Stdin is only read when it did not: an agent
+// harness often leaves stdin as a pipe that never closes, and reading it
+// would block before the request is sent and before --timeout applies.
+func execHasCode(args []string) bool {
+	for i := 0; i < len(args); i++ {
+		switch a := args[i]; {
+		case a == "--file":
+			return true
+		case a == "--usings":
+			i++
+		case strings.HasPrefix(a, "--"):
+		default:
+			return true
+		}
+	}
+	return false
 }
 
 // readStdinIfPiped reads stdin when piped and prepends it as the first positional arg.
@@ -668,6 +689,7 @@ Examples:
 Notes:
   - --file is recommended for complex code (avoids shell escaping)
   - Pipe code via stdin: echo '<code>' | unity-cli exec [--usings ns1,ns2]
+    Stdin is read only when no code argument or --file is given.
   - Deferred callbacks, coroutines, and async APIs are blocked by default because they can outlive the request.
     --async changes CLI transport only; use --allow-deferred-code for an intentional deferred C# lifetime.
   - Use 'return' for output, 'return null;' for void operations

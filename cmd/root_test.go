@@ -138,3 +138,24 @@ func sliceEqual(a, b []string) bool {
 	}
 	return true
 }
+
+func TestExecHasCode(t *testing.T) {
+	cases := []struct {
+		args []string
+		want bool
+	}{
+		{nil, false},
+		{[]string{"return 1;"}, true},
+		{[]string{"--file", "a.cs"}, true},
+		{[]string{"--usings", "Unity.Entities"}, false},
+		{[]string{"--usings", "Unity.Entities", "--async"}, false},
+		{[]string{"--async", "--allow-deferred-code"}, false},
+		{[]string{"--usings", "A,B", "return 1;"}, true},
+		{[]string{"--async", "return 1;"}, true},
+	}
+	for _, c := range cases {
+		if got := execHasCode(c.args); got != c.want {
+			t.Errorf("execHasCode(%q) = %v, want %v", c.args, got, c.want)
+		}
+	}
+}
