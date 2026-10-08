@@ -27,7 +27,7 @@ namespace UnityCliConnector.Tools
             public string Output { get; set; }
             [ToolParameter("Maximum events; omit for all. Must be positive.")]
             public int MaxEvents { get; set; }
-            [ToolParameter("Overall capture timeout in seconds (default 90). Partial dumps are saved on timeout.")]
+            [ToolParameter("Overall capture timeout in seconds (default 90). No-ready-frame wait is fixed at 10 seconds per stabilization attempt. Partial dumps are saved on timeout.")]
             public int CaptureTimeout { get; set; }
         }
 
@@ -53,7 +53,6 @@ namespace UnityCliConnector.Tools
                     return Task.FromResult<object>(new ErrorResponse("A Frame Debugger dump is already running."));
                 if (action == "enable")
                 {
-                    api.OpenWindow();
                     api.Enable();
                     return Task.FromResult<object>(new SuccessResponse("Frame Debugger enabled."));
                 }
@@ -100,8 +99,13 @@ namespace UnityCliConnector.Tools
             readonly int oldLimit;
             readonly int connection;
             readonly DateTime startedUtc = DateTime.UtcNow;
-            double started, eventStarted;
+            const int StableSamplesRequired = 3;
+            const int MaxRetries = 3;
+            double started, eventStarted, stabilizingSince;
             int waitUpdates = 4, index, hash, total, selected;
+            int stableSamples, stableHash, stableCount, retryCount;
+            readonly JArray frameChanges = new();
+            bool stabilizing = true, pausedDuringCapture;
             Array descriptors;
             string[] breakCauses;
             bool finished;
@@ -120,13 +124,14 @@ namespace UnityCliConnector.Tools
 
             public Task<object> Start()
             {
-                started = EditorApplication.timeSinceStartup;
+                started = stabilizingSince = EditorApplication.timeSinceStartup;
                 AssemblyReloadEvents.beforeAssemblyReload += Interrupted;
                 EditorApplication.quitting += Interrupted;
                 try
                 {
-                    api.OpenWindow();
+                    if (EditorApplication.isPlaying) EditorApplication.isPaused = true;
                     api.Enable();
+                    pausedDuringCapture = EditorApplication.isPaused;
                     EditorApplication.update += Update;
                     api.Repaint();
                 }
@@ -147,47 +152,73 @@ namespace UnityCliConnector.Tools
                         return;
                     }
                     if (!api.Enabled) { Finish("Frame Debugger was disabled during capture."); return; }
+                    if (EditorApplication.isPlaying) EditorApplication.isPaused = true;
                     if (waitUpdates-- > 0) { api.Repaint(); return; }
-                    if (descriptors == null)
+                    if (stabilizing)
                     {
                         // Enabling and rendering are deferred by Unity. Never read details
                         // in the same update that changes the event limit.
                         var frame = api.Events();
                         if (!api.WindowReady || api.Count <= 0 || frame == null || frame.Length == 0)
                         {
-                            if (now - started >= 10) Finish("No ready captured frame. Make a Game view visible and render a frame; Play Mode may be required.");
+                            stableSamples = 0;
+                            if (now - stabilizingSince >= 10) Finish("No ready captured frame within 10 seconds (fixed independently of --capture-timeout). Make a Game view visible and render a frame; Play Mode may be required.");
                             else api.Repaint();
                             return;
                         }
-                        total = api.Count;
-                        if (frame.Length != total) { api.Repaint(); return; }
+                        int currentCount = api.Count, currentHash = api.Hash;
+                        if (frame.Length != currentCount) { stableSamples = 0; api.Repaint(); return; }
+                        // Settle the full frame, not an already-enabled prefix.
+                        if (api.Limit != currentCount)
+                        {
+                            api.Limit = currentCount;
+                            stableSamples = 0;
+                            waitUpdates = 2;
+                            api.Repaint();
+                            return;
+                        }
+                        stableSamples = stableSamples > 0 && stableHash == currentHash && stableCount == currentCount ? stableSamples + 1 : 1;
+                        stableHash = currentHash;
+                        stableCount = currentCount;
+                        if (stableSamples < StableSamplesRequired) { waitUpdates = 2; api.Repaint(); return; }
+                        total = currentCount;
+                        hash = currentHash;
                         descriptors = frame;
-                        hash = api.Hash;
                         selected = Math.Min(total, max);
+                        events.Clear();
+                        missing.Clear();
+                        index = 0;
+                        stabilizing = false;
                         breakCauses = api.BreakCauses();
                         if (breakCauses == null) missing.Add("GetBatchBreakCauseStrings");
                         Select(now);
                         return;
                     }
-                    if (api.Hash != hash || api.Count != total)
-                    {
-                        Finish("Captured frame changed during traversal; refusing to mix frames.");
-                        return;
-                    }
+                    if (RestartIfChanged(now)) return;
                     try
                     {
                         if (api.Limit != index + 1)
                             throw new InvalidOperationException("Event limit changed externally.");
                         if (!api.TryData(index, out var data))
                         {
-                            if (now - eventStarted < 2) { api.Repaint(); return; }
+                            if (now - eventStarted < 2)
+                            {
+                                if (RestartIfChanged(now)) return;
+                                api.Repaint();
+                                return;
+                            }
                             throw new InvalidOperationException("Event data unavailable after 2 seconds.");
                         }
-                        events.Add(FrameDebuggerJson.Event(api, descriptors.GetValue(index), data, index, breakCauses, missing));
+                        var item = FrameDebuggerJson.Event(api, descriptors.GetValue(index), data, index, breakCauses, missing);
+                        if (RestartIfChanged(now)) return;
+                        events.Add(item);
                     }
                     catch (Exception ex)
                     {
-                        events.Add(FrameDebuggerJson.FailedEvent(api, descriptors.GetValue(index), index, ex.GetBaseException().Message));
+                        var item = FrameDebuggerJson.FailedEvent(api, descriptors.GetValue(index), index, ex.GetBaseException().Message);
+                        // Failed identities also read native state; fence before publishing.
+                        if (RestartIfChanged(now)) return;
+                        events.Add(item);
                     }
                     index++;
                     if (index >= selected) Finish(null);
@@ -196,10 +227,28 @@ namespace UnityCliConnector.Tools
                 catch (Exception ex) { Finish(ex.GetBaseException().Message); }
             }
 
+            bool RestartIfChanged(double now)
+            {
+                int currentHash = api.Hash, currentCount = api.Count;
+                if (currentHash == hash && currentCount == total) return false;
+                frameChanges.Add(new JObject { ["index"] = index, ["oldHash"] = hash, ["newHash"] = currentHash, ["oldCount"] = total, ["newCount"] = currentCount });
+                if (retryCount >= MaxRetries)
+                    Finish($"Captured frame kept changing; exhausted {MaxRetries} restarts. Refusing to mix frames.");
+                else
+                {
+                    retryCount++;
+                    stabilizing = true;
+                    stableSamples = 0;
+                    stabilizingSince = now;
+                    waitUpdates = 2;
+                    api.Repaint();
+                }
+                return true;
+            }
+
             void Select(double now)
             {
                 api.Limit = index + 1;
-                api.ChangeLimit(index + 1);
                 eventStarted = now;
                 waitUpdates = 2;
                 api.Repaint();
@@ -216,22 +265,18 @@ namespace UnityCliConnector.Tools
                 try
                 {
                     if (!wasEnabled) api.Disable();
-                    api.CloseOwnedWindow();
-                    if (wasEnabled)
-                    {
-                        if (!api.Enabled) api.SetEnabled(true, connection);
-                        api.Limit = oldLimit;
-                        api.ChangeLimit(oldLimit);
-                    }
+                    // A pause transition can disable native capture and reset its selector.
                     EditorApplication.isPaused = wasPaused;
+                    if (wasEnabled && !api.Enabled) api.SetEnabled(true, connection);
+                    api.Limit = oldLimit;
                     api.Repaint();
                 }
                 catch (Exception ex)
                 {
                     error = (error == null ? "" : error + " ") + "State restoration failed: " + ex.GetBaseException().Message;
                     // Best effort if the window's cleanup failed.
-                    try { api.SetEnabled(wasEnabled, connection); api.Limit = oldLimit; } catch { }
                     EditorApplication.isPaused = wasPaused;
+                    try { api.SetEnabled(wasEnabled, connection); api.Limit = oldLimit; } catch { }
                 }
                 try
                 {
@@ -240,6 +285,9 @@ namespace UnityCliConnector.Tools
                     {
                         ["output"] = output, ["summary"] = summary, ["complete"] = error == null,
                         ["truncated"] = selected < total, ["error"] = error,
+                        ["retryCount"] = retryCount, ["maxRetries"] = MaxRetries,
+                        ["stableSamplesRequired"] = StableSamplesRequired, ["pausedDuringCapture"] = pausedDuringCapture,
+                        ["frameChanges"] = frameChanges,
                         ["missingFields"] = new JArray(missing.OrderBy(x => x))
                     };
                     // Do not leave an empty artifact when no frame could be captured.
@@ -252,6 +300,9 @@ namespace UnityCliConnector.Tools
                             ["startedUtc"] = startedUtc.ToString("O"), ["eventsHash"] = hash,
                             ["durationSeconds"] = EditorApplication.timeSinceStartup - started,
                             ["complete"] = error == null, ["truncated"] = selected < total,
+                            ["retryCount"] = retryCount, ["maxRetries"] = MaxRetries,
+                            ["stableSamplesRequired"] = StableSamplesRequired, ["pausedDuringCapture"] = pausedDuringCapture,
+                            ["frameChanges"] = frameChanges.DeepClone(),
                             ["error"] = error, ["missingFields"] = result["missingFields"].DeepClone(),
                             ["api"] = api.Describe(), ["summary"] = summary.DeepClone(), ["events"] = events
                         };
@@ -263,7 +314,8 @@ namespace UnityCliConnector.Tools
                         ? new SuccessResponse("Frame Debugger dump saved.", result)
                         : (object)new ErrorResponse(error, result));
                 }
-                catch (Exception ex) { completion.TrySetResult(new ErrorResponse("Dump write failed: " + ex.GetBaseException().Message)); }
+                catch (Exception ex) { completion.TrySetResult(new ErrorResponse("Dump write failed: " + ex.GetBaseException().Message,
+                    new { retryCount, maxRetries = MaxRetries })); }
                 finally { s_Capture = null; }
             }
         }
@@ -278,8 +330,7 @@ namespace UnityCliConnector.Tools
         readonly Type utility, dataType, windowType, engine;
         readonly MethodInfo getData, setEnabled;
         readonly PropertyInfo limit;
-        EditorWindow window;
-        bool ownsWindow;
+        readonly EditorWindow window;
 
         public FrameDebuggerApi()
         {
@@ -287,8 +338,8 @@ namespace UnityCliConnector.Tools
             utility = editor.GetType("UnityEditorInternal.FrameDebuggerInternal.FrameDebuggerUtility")
                 ?? editor.GetType("UnityEditorInternal.FrameDebuggerUtility")
                 ?? throw new NotSupportedException("FrameDebuggerUtility type not found");
-            windowType = editor.GetType("UnityEditor.FrameDebuggerWindow")
-                ?? throw new NotSupportedException("FrameDebuggerWindow type not found");
+            windowType = editor.GetType("UnityEditor.FrameDebuggerWindow");
+            window = windowType == null ? null : Resources.FindObjectsOfTypeAll(windowType).OfType<EditorWindow>().FirstOrDefault();
             engine = typeof(Object).Assembly.GetType("UnityEngine.FrameDebugger")
                 ?? throw new NotSupportedException("UnityEngine.FrameDebugger type not found");
             setEnabled = RequiredMethod(utility, "SetEnabled", typeof(bool), typeof(int));
@@ -320,45 +371,50 @@ namespace UnityCliConnector.Tools
         public Object EventObject(int index) => utility.GetMethod("GetFrameEventObject", Static)?.Invoke(null, new object[] { index }) as Object;
         public void SetEnabled(bool enabled, int connection) => setEnabled.Invoke(null, new object[] { enabled, connection });
 
-        public void OpenWindow()
-        {
-            window = Resources.FindObjectsOfTypeAll(windowType).OfType<EditorWindow>().FirstOrDefault();
-            if (window != null) return;
-            if (Enabled) throw new NotSupportedException("Enabled Frame Debugger has no window; open its window before dumping");
-            window = RequiredMethod(windowType, "OpenWindow").Invoke(null, null) as EditorWindow;
-            ownsWindow = true;
-            if (window == null) throw new NotSupportedException("Unable to open Frame Debugger window");
-        }
-
         public void Enable()
         {
             if (Enabled) return;
-            var method = windowType.GetMethod("EnableFrameDebugger", Instance, null, Type.EmptyTypes, null)
-                ?? throw new NotSupportedException("FrameDebuggerWindow.EnableFrameDebugger is unavailable");
-            method.Invoke(window, null);
-            if (!Enabled) throw new InvalidOperationException("Frame Debugger could not enable. Make a Game view visible and check graphics API support");
+            if (utility.GetProperty("locallySupported", Static)?.GetValue(null) is bool supported && !supported)
+                throw new NotSupportedException("Frame Debugger is not supported by the current graphics API");
+            if (EditorApplication.isPlaying) EditorApplication.isPaused = true;
+            // Native enable avoids ShowTab; initialize managed state for an existing user window.
+            if (window != null)
+            {
+                foreach (var name in new[] { "m_TreeViewState", "m_EventDetailsView" })
+                {
+                    var field = windowType.GetField(name, Instance);
+                    if (field != null && field.GetValue(window) == null)
+                        field.SetValue(window, Activator.CreateInstance(field.FieldType, Instance, null,
+                            name == "m_EventDetailsView" ? new object[] { window } : Array.Empty<object>(), null));
+                }
+                windowType.GetField("m_EnablingWaitCounter", Instance)?.SetValue(window, 0);
+            }
+            SetEnabled(true, UnityEditorInternal.ProfilerDriver.connectedProfiler);
+            if (!Enabled) throw new InvalidOperationException("Frame Debugger could not enable for the Editor");
+            Repaint();
         }
 
         public void Disable()
         {
-            var current = window ?? Resources.FindObjectsOfTypeAll(windowType).OfType<EditorWindow>().FirstOrDefault();
-            var method = windowType.GetMethod("DisableFrameDebugger", Instance, null, Type.EmptyTypes, null);
+            // Existing windows need managed cleanup; windowless disable uses native state only.
+            var current = window;
+            var method = windowType?.GetMethod("DisableFrameDebugger", Instance, null, Type.EmptyTypes, null);
             if (current != null && method != null) method.Invoke(current, null);
             else SetEnabled(false, Connection);
         }
 
-        public void ChangeLimit(int value) => windowType.GetMethod("ChangeFrameEventLimit", Instance, null, new[] { typeof(int) }, null)?.Invoke(window, new object[] { value });
         public void Repaint()
         {
             if (window != null)
             {
-                windowType.GetMethod("RepaintOnLimitChange", Instance)?.Invoke(window, null);
                 window.Repaint();
             }
             EditorApplication.QueuePlayerLoopUpdate();
+            typeof(EditorApplication).GetMethod("SetSceneRepaintDirty", Static)?.Invoke(null, null);
+            foreach (var view in Resources.FindObjectsOfTypeAll<EditorWindow>().Where(w => w.GetType().Name == "GameView"))
+                view.Repaint();
             UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
         }
-        public void CloseOwnedWindow() { if (ownsWindow && window != null) { window.Close(); window = null; } }
 
         public bool TryData(int index, out object data)
         {

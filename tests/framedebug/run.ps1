@@ -1,5 +1,6 @@
 param([Parameter(Mandatory = $true)][string]$UnityEditorData)
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot/../tooldiscovery/hidden.ps1"
 $root = (Resolve-Path "$PSScriptRoot/../..").Path
 $temp = Join-Path ([IO.Path]::GetTempPath()) ("framedebug-tests-" + [Guid]::NewGuid())
 New-Item -ItemType Directory $temp | Out-Null
@@ -20,9 +21,9 @@ try {
         foreach ($file in @('Core/Response.cs', 'Core/ToolParams.cs', 'Core/ParamCoercion.cs', 'Attributes/UnityCliToolAttribute.cs')) {
             $args += "$root/unity-connector/Editor/$file"
         }
-        & $dotnet exec $csc @args
-        if ($LASTEXITCODE -ne 0) { throw "Fixture $variant compile failed" }
-        & $mono $exe
-        if ($LASTEXITCODE -ne 0) { throw "Fixture $variant tests failed" }
+        $compiled = Invoke-HiddenProcess -File $dotnet -Arguments (@('exec', $csc) + $args)
+        Write-Output $compiled.stdout
+        $tested = Invoke-HiddenProcess -File $mono -Arguments @($exe)
+        Write-Output $tested.stdout
     }
 } finally { Remove-Item $temp -Recurse -Force }
