@@ -234,39 +234,9 @@ namespace UnityCliConnector.Tools
         // can fall back to the window capture.
         private static object CaptureGameTarget(ToolParams p, string outputPath)
         {
-            const BindingFlags kFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
-
-            var gameViewType = typeof(EditorWindow).Assembly.GetType("UnityEditor.GameView");
-            if (gameViewType == null)
-                return null;
-
-            var views = Resources.FindObjectsOfTypeAll<EditorWindow>().Where(w => gameViewType.IsInstanceOfType(w)).ToArray();
-            if (views.Length == 0)
-                return null;
-            var window = views.FirstOrDefault(w => w.hasFocus) ?? views[0];
-
-            FieldInfo targetField = null;
-            for (var t = gameViewType; t != null && targetField == null; t = t.BaseType)
-                targetField = t.GetField("m_TargetTexture", kFlags | BindingFlags.DeclaredOnly);
-            if (targetField == null)
-                return null;
-
-            // Render the view synchronously so the target holds the current frame.
-            // A hidden tab does not render, so bring it to the front of its dock
-            // first. Neither call activates the Unity application window.
-            var hostView = typeof(EditorWindow).GetField("m_Parent", kFlags)?.GetValue(window);
-            var actualView = hostView?.GetType().GetProperty("actualView", kFlags)?.GetValue(hostView);
-            if (hostView != null && !ReferenceEquals(actualView, window))
-                window.ShowTab();
-            window.Repaint();
-            var sendEvent = hostView?.GetType().GetMethod("SendEvent", kFlags, null, new[] { typeof(Event) }, null);
-            if (sendEvent != null)
-            {
-                try { sendEvent.Invoke(hostView, new object[] { new Event { type = EventType.Repaint } }); } catch { }
-            }
-
-            var target = targetField.GetValue(window) as RenderTexture;
-            if (target == null || !target.IsCreated() || target.width <= 0 || target.height <= 0)
+            var window = FindGameView();
+            var target = RenderGameTarget(window);
+            if (target == null)
                 return null;
 
             int width = target.width;
@@ -323,6 +293,69 @@ namespace UnityCliConnector.Tools
                 if (rt != null) RenderTexture.ReleaseTemporary(rt);
                 if (tex != null) UnityEngine.Object.DestroyImmediate(tex);
             }
+        }
+
+        // Returns the focused Game view, or the first one, or null.
+        internal static EditorWindow FindGameView()
+        {
+            var gameViewType = typeof(EditorWindow).Assembly.GetType("UnityEditor.GameView");
+            if (gameViewType == null)
+                return null;
+
+            var views = Resources.FindObjectsOfTypeAll<EditorWindow>().Where(w => gameViewType.IsInstanceOfType(w)).ToArray();
+            if (views.Length == 0)
+                return null;
+            return views.FirstOrDefault(w => w.hasFocus) ?? views[0];
+        }
+
+        static FieldInfo s_GameTargetField;
+
+        // The Game view's render target at the game resolution. Holds the final
+        // frame (scene plus overlay UI) once the view has rendered.
+        internal static RenderTexture GetGameTarget(EditorWindow window)
+        {
+            if (window == null)
+                return null;
+            if (s_GameTargetField == null)
+            {
+                for (var t = window.GetType(); t != null && s_GameTargetField == null; t = t.BaseType)
+                    s_GameTargetField = t.GetField("m_TargetTexture", BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+                if (s_GameTargetField == null)
+                    return null;
+            }
+
+            var target = s_GameTargetField.GetValue(window) as RenderTexture;
+            if (target == null || !target.IsCreated() || target.width <= 0 || target.height <= 0)
+                return null;
+            return target;
+        }
+
+        // A hidden tab does not render, so bring it to the front of its dock.
+        // Neither call activates the Unity application window.
+        internal static void EnsureGameViewVisible(EditorWindow window, bool repaintNow)
+        {
+            const BindingFlags kFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+            var hostView = typeof(EditorWindow).GetField("m_Parent", kFlags)?.GetValue(window);
+            var actualView = hostView?.GetType().GetProperty("actualView", kFlags)?.GetValue(hostView);
+            if (hostView != null && !ReferenceEquals(actualView, window))
+                window.ShowTab();
+            if (!repaintNow)
+                return;
+            window.Repaint();
+            var sendEvent = hostView?.GetType().GetMethod("SendEvent", kFlags, null, new[] { typeof(Event) }, null);
+            if (sendEvent != null)
+            {
+                try { sendEvent.Invoke(hostView, new object[] { new Event { type = EventType.Repaint } }); } catch { }
+            }
+        }
+
+        // Renders the view synchronously so the target holds the current frame.
+        private static RenderTexture RenderGameTarget(EditorWindow window)
+        {
+            if (window == null)
+                return null;
+            EnsureGameViewVisible(window, true);
+            return GetGameTarget(window);
         }
 
         private static Texture2D ResizeTexture(Texture2D source, int newWidth, int newHeight)

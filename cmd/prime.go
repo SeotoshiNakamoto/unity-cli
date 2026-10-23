@@ -25,6 +25,7 @@ var cliCommandMap = map[string]string{
 	"reserialize_assets": "reserialize",
 	"manage_profiler":    "profiler",
 	"screenshot":         "screenshot",
+	"capture":            "capture frames",
 	"trace_method":       "trace",
 	"ui_snapshot":        "ui",
 }

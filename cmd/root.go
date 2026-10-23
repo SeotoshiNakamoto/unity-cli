@@ -122,6 +122,8 @@ func Execute() error {
 		resp, err = uiCmd(subArgs, send)
 	case "job":
 		resp, err = jobCmd(subArgs, send)
+	case "capture":
+		resp, err = captureCmd(subArgs, send)
 	case "parrelsync":
 		resp, err = parrelSyncCmd(subArgs, send)
 	default:
@@ -389,6 +391,15 @@ Screenshot:
   screenshot                          Capture scene view (default)
   screenshot --view game              Capture game view at its render resolution
   screenshot --output_path <path>     Custom output path
+
+Frame Capture (Play Mode):
+  capture frames --seconds 2 --out <dir>  Save every game frame of the Game view (640px JPG)
+  capture frames ... --start-when "<C# bool>"  Start on the first frame the expression is true
+  capture frames ... --log "<C# expr>"    Log values per frame to frames.csv (repeatable)
+  capture frames ... --sheet 6x6          Contact sheets labelled with frameCount
+  capture frames ... --crop x,y,w,h       Crop in Game view render pixels (native size)
+  capture frames ... --video              Also write frames.mp4, one video frame per game frame
+  capture frames ... --no-wait            Return at once; then capture wait / status / stop
 
 Reserialize:
   reserialize [path...]          Force reserialize (no args = entire project)
@@ -750,6 +761,69 @@ Examples:
   unity-cli screenshot --view window --window_title "Console"
   unity-cli screenshot --action list_windows
   unity-cli screenshot --output_path captures/my_scene.png
+`)
+	case "capture":
+		fmt.Print(`Usage: unity-cli capture <frames|status|stop|wait> [options]
+
+Save every player frame of the Game view, one image per frame, during Play Mode.
+Each image is the Game view's final render target (the same source as
+'screenshot --view game', overlay UI included), taken at the end of the frame,
+scaled on the GPU and read back asynchronously so the game is not slowed.
+Game time is never fixed or retimed, so timing bugs still reproduce. Files are
+named f<Time.frameCount>.jpg; a jump in the numbers means frames were missed.
+
+  frames      Start a capture and wait for the result. Runs in Play Mode; it
+              can also be armed before Play when Enter Play Mode Options
+              disable domain reload, so the first player frame is captured.
+  status      Show the running capture, or the last result
+  stop        End the running capture early and keep what was saved
+  wait        Wait for a capture started with --no-wait
+
+Options for frames:
+  --seconds N           Real seconds to capture from the first frame (default 2)
+  --frames N            Capture exactly N player frames instead of --seconds
+  --out <dir>           Output directory on the Editor host; relative to project
+                        root (default Temp/CaptureFrames/<timestamp>)
+  --overwrite           Delete earlier capture files in --out first
+  --width N             Saved width (default 640; with --crop the crop width).
+                        Never upscales.
+  --crop x,y,w,h        Crop in Game view render pixels, origin top-left. Saved
+                        at native resolution unless --width is smaller.
+  --format jpg|png      Image format (default jpg)
+  --quality N           JPG quality 1-100 (default 90)
+  --start-when "<expr>" C# bool expression checked every frame; capture starts
+                        on the first frame it is true (default: immediately)
+  --wait-timeout N      Seconds to wait for --start-when (default 60)
+  --log "<expr>"        C# expression logged for each frame into frames.csv with
+                        frame, realtime and unscaledDeltaTime. Repeatable.
+  --usings a,b          Extra using directives for --start-when / --log
+  --sheet [CxR]         Contact sheets of every saved frame, CxR cells per sheet
+                        (default 6x6), each cell labelled with frameCount. Sheets
+                        stay within 4000px wide. A red label marks a cell whose
+                        preceding frames were missed.
+  --video               Also write frames.mp4 with one video frame per saved game
+                        frame (needs ffmpeg). Not retimed to real time.
+  --video-fps N         Video playback rate (default 60)
+  --ffmpeg <path>       ffmpeg executable (default: ffmpeg on PATH)
+  --no-wait             Return right after the capture starts
+
+Expressions use the same defaults as exec (UnityEngine, UnityEditor, System.Linq
+...). A bare expression is returned; code with its own 'return' is kept.
+
+The capture ends on its own when Play Mode exits, the domain reloads or
+'capture stop' is called; frames saved so far are kept and capture.json in
+--out holds the result. While waiting the CLI does not hold Unity's command
+queue, so other commands (exec, ui click) can run from another shell.
+
+Result: out_dir, frames_saved, frames_skipped (with reasons), start_frame,
+first/last_saved_frame, width/height, csv, sheets, video.
+
+Examples:
+  unity-cli capture frames --seconds 2 --out d:/tmp/cap --sheet
+  unity-cli capture frames --frames 120 --out d:/tmp/cap --crop 640,200,640,480
+  unity-cli capture frames --seconds 3 --out d:/tmp/cap --sheet 6x6 --start-when "Time.timeSinceLevelLoad < 0.5" --log "Camera.main.transform.position" --log "Time.timeScale"
+  unity-cli capture frames --seconds 30 --out d:/tmp/long --video --no-wait
+  unity-cli capture wait
 `)
 	case "reserialize":
 		fmt.Print(`Usage: unity-cli reserialize [path...]

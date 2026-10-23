@@ -87,11 +87,7 @@ namespace UnityCliConnector.Tools
         private static string BuildSource(string code, List<string> extraUsings)
         {
             var sb = new StringBuilder();
-            foreach (var u in DefaultUsings)
-                sb.AppendLine($"using {u};");
-            foreach (var u in extraUsings)
-                sb.AppendLine($"using {u};");
-
+            sb.Append(DefaultUsingLines(extraUsings));
             sb.AppendLine();
             sb.AppendLine("public static class __CliDynamic {");
             sb.AppendLine("  public static object Execute() {");
@@ -120,22 +116,71 @@ namespace UnityCliConnector.Tools
 
         private static object CompileAndExecute(string source, string cscOverride = null, string dotnetOverride = null)
         {
-            var csc = FindCsc(cscOverride);
-            if (csc == null)
-                return new ErrorResponse(
-                    "Cannot find csc compiler under: " +
-                    EditorApplication.applicationContentsPath +
-                    "\nSpecify the path manually with --csc <path-to-csc.dll-or-csc.exe>");
-
-            var usesDotnet = csc.EndsWith(".dll");
-            var exe = usesDotnet ? FindDotnet(dotnetOverride) : csc;
-            if (exe == null)
-                return new ErrorResponse(
-                    "Cannot find dotnet runtime under: " +
-                    EditorApplication.applicationContentsPath +
-                    "\nSpecify the path manually with --dotnet <path>");
+            var error = ResolveCompiler(cscOverride, dotnetOverride, out var csc, out var exe);
+            if (error != null)
+                return new ErrorResponse(error);
 
             // Share the ordered reference set between the key and compiler.
+            var references = CollectReferences();
+            var key = EditorApplication.isCompiling ? null : BuildCacheKey(source, references, csc, exe);
+            if (key != null && CompiledMethods.TryGetValue(key, out var cachedMethod))
+                return Execute(cachedMethod);
+
+            var compiled = Compile(source, references, csc, exe, out error);
+            if (compiled == null)
+                return new ErrorResponse(error);
+            var method = compiled.GetType("__CliDynamic")?.GetMethod("Execute");
+            if (method == null)
+                return new ErrorResponse("Internal error: compiled type or method not found.");
+
+            // Cache successful compilation, including methods that throw at runtime.
+            if (key != null && !EditorApplication.isCompiling)
+                CompiledMethods[key] = method;
+            return Execute(method);
+        }
+
+        /// <summary>
+        /// Compiles a complete C# source file against every loaded assembly, with the
+        /// default exec usings available through <see cref="DefaultUsingLines"/>.
+        /// Returns null and sets <paramref name="error"/> on failure.
+        /// </summary>
+        internal static Assembly CompileSource(string source, out string error)
+        {
+            error = ResolveCompiler(null, null, out var csc, out var exe);
+            return error != null ? null : Compile(source, CollectReferences(), csc, exe, out error);
+        }
+
+        internal static string DefaultUsingLines(IEnumerable<string> extraUsings)
+        {
+            var sb = new StringBuilder();
+            foreach (var u in DefaultUsings)
+                sb.AppendLine($"using {u};");
+            if (extraUsings != null)
+                foreach (var u in extraUsings)
+                    if (!string.IsNullOrWhiteSpace(u))
+                        sb.AppendLine($"using {u.Trim()};");
+            return sb.ToString();
+        }
+
+        private static string ResolveCompiler(string cscOverride, string dotnetOverride, out string csc, out string exe)
+        {
+            exe = null;
+            csc = FindCsc(cscOverride);
+            if (csc == null)
+                return "Cannot find csc compiler under: " +
+                    EditorApplication.applicationContentsPath +
+                    "\nSpecify the path manually with --csc <path-to-csc.dll-or-csc.exe>";
+
+            exe = csc.EndsWith(".dll") ? FindDotnet(dotnetOverride) : csc;
+            if (exe == null)
+                return "Cannot find dotnet runtime under: " +
+                    EditorApplication.applicationContentsPath +
+                    "\nSpecify the path manually with --dotnet <path>";
+            return null;
+        }
+
+        private static List<Assembly> CollectReferences()
+        {
             var references = new List<Assembly>();
             var added = new HashSet<string>();
             foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
@@ -148,10 +193,13 @@ namespace UnityCliConnector.Tools
                 }
                 catch { }
             }
-            var key = EditorApplication.isCompiling ? null : BuildCacheKey(source, references, csc, exe);
-            if (key != null && CompiledMethods.TryGetValue(key, out var cachedMethod))
-                return Execute(cachedMethod);
+            return references;
+        }
 
+        private static Assembly Compile(string source, List<Assembly> references, string csc, string exe, out string error)
+        {
+            error = null;
+            var usesDotnet = csc.EndsWith(".dll");
             var utf8 = new UTF8Encoding(false);
             var tmpDir = Path.Combine(Path.GetTempPath(), "unity-cli-exec");
             Directory.CreateDirectory(tmpDir);
@@ -198,20 +246,12 @@ namespace UnityCliConnector.Tools
                     if (proc.ExitCode != 0)
                     {
                         var output = string.IsNullOrEmpty(stderr) ? stdout : stderr;
-                        return new ErrorResponse($"Compile error:\n{FormatErrors(output)}");
+                        error = $"Compile error:\n{FormatErrors(output)}";
+                        return null;
                     }
                 }
 
-                var bytes = File.ReadAllBytes(outFile);
-                var compiled = Assembly.Load(bytes);
-                var method = compiled.GetType("__CliDynamic")?.GetMethod("Execute");
-                if (method == null)
-                    return new ErrorResponse("Internal error: compiled type or method not found.");
-
-                // Cache successful compilation, including methods that throw at runtime.
-                if (key != null && !EditorApplication.isCompiling)
-                    CompiledMethods[key] = method;
-                return Execute(method);
+                return Assembly.Load(File.ReadAllBytes(outFile));
             }
             finally
             {

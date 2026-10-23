@@ -148,6 +148,7 @@ Before compiling or reloading, the Connector records the state (`compiling`, `re
 | `menu` | Execute any Unity menu item by path |
 | `reserialize` | Re-serialize assets through Unity's serializer |
 | `screenshot` | Capture scene/game view as PNG (game view at its render resolution) |
+| `capture` | Save every Play Mode game frame as an image, with contact sheets, CSV and video |
 | `ui` | Observe and interact with UIToolkit UI; opt-in screen-change monitoring |
 | `profiler` | Read profiler hierarchy, control recording |
 | `framedebug` | Dump one Frame Debugger frame to JSON with rendering state and summaries |
@@ -350,6 +351,29 @@ The versioned JSON records event index/type/name, object identity and hierarchy/
 Keep a Game view rendering (Play Mode may be required). `enable` and `dump` enable capture through the native utility without opening/focusing windows or calling Game view `ShowTab`. An existing user Frame Debugger window remains open; its managed data-view fields are initialized if needed, and disabling uses its managed cleanup method when available (otherwise the native utility). Capture explicitly pauses the playing Editor, settles the full frame for three matching hash/count samples, then traverses it. Hash/count checks bracket successful and failed event reads, including failed name/object lookup. A detected frame change discards the pending event and causes up to three complete restarts within the original timeout; events from different attempts are not combined. Responses/dumps add `retryCount`, `maxRetries`, `stableSamplesRequired`, `pausedDuringCapture`, and `frameChanges`. Repaint/player-loop requests also drive background capture; increase the overall timeout for large or heavily throttled traversal, but ensure a ready frame is available within the separate fixed 10-second wait. Capture restores original enabled/limit/pause state even on error (known limitation: an open debugger window's tree selection highlight is not restored), never enters/exits Play Mode, and never saves scenes. Avoid editing scenes, recompiling or changing debugger controls during capture. Failed events are marked individually; exhausted retries or timeout return an error with a partial JSON if a frame was acquired.
 
 The response and JSON include totals/failures, event-type and batching-reason histograms, shader and shader/pass counts, summed reported draw calls, and transitions between reported render-target descriptors. Transitions do not establish native attachment identity and can miss same-name targets. Summaries only cover the selected successful events. Compare identical scene/camera/resolution conditions; check `complete`, `truncated` and failure counts before diffing. **Frame Debugger events are not one-to-one GPU draws** (clear, dispatch and scopes are included), and **no GPU timings are available**. Reduced counts do not by themselves prove a GPU-time improvement.
+
+### Frame Capture
+
+```bash
+# Every game frame for 2 seconds, 640px JPGs plus 6x6 contact sheets
+unity-cli capture frames --seconds 2 --out D:/tmp/cap --sheet
+# Start on the first frame a condition holds, log values per frame
+unity-cli capture frames --seconds 3 --out D:/tmp/cap --sheet --start-when "SceneManager.GetActiveScene().name == \"Town\"" --log "Camera.main.transform.position" --log "Time.timeScale"
+# Crop at native resolution; long runs as a video, one video frame per game frame
+unity-cli capture frames --frames 120 --out D:/tmp/crop --crop 640,200,640,480
+unity-cli capture frames --seconds 30 --out D:/tmp/long --video --no-wait
+unity-cli capture wait        # or: capture status / capture stop
+```
+
+`capture frames` saves the Game view's final render target (the `screenshot --view game` source, overlay UI included) at the end of every player frame as `f<Time.frameCount>.jpg`. Images are scaled on the GPU (repeated halving, then one bilinear step) and read back with `AsyncGPUReadback`; encoding runs on worker threads, so the game frame is not held up. Game time is never fixed or retimed, so timing bugs reproduce as they would in play; a jump in the file numbers means frames were missed, and the result reports `frames_skipped` with reasons.
+
+- `--width` (default 640) never upscales. `--crop x,y,w,h` is in render pixels with a top-left origin and is saved at native size unless `--width` is smaller.
+- `--start-when` is a C# bool expression evaluated every frame (with the exec usings); capture runs for `--seconds` (or `--frames`) from the first frame it is true. `--wait-timeout` (default 60s) fails the capture if it never is.
+- `--log` (repeatable) writes each expression's value next to frame, realtime and unscaledDeltaTime in `frames.csv`.
+- `--sheet [CxR]` pages every saved frame onto contact sheets (default 6x6), each cell labelled with its frameCount and kept within 4000px wide; a red label marks a cell whose preceding frames were missed.
+- `--video` writes `frames.mp4` through ffmpeg with one video frame per saved game frame (not retimed to real time).
+
+The capture needs Play Mode, or it can be armed before Play when Enter Play Mode Options disable domain reload. It ends cleanly on Play Mode exit, domain reload, Editor quit or `capture stop`, keeping what was saved; `capture.json` in the output directory holds the result. The CLI polls status instead of holding Unity's command queue, so other commands can run while it waits.
 
 ### UIToolkit UI
 

@@ -147,6 +147,7 @@ Unity 커넥터의 동작:
 | `test` | EditMode/PlayMode 테스트 실행 |
 | `menu` | Unity 메뉴 아이템을 경로로 실행 |
 | `reserialize` | Unity 시리얼라이저를 통해 에셋 재직렬화 |
+| `capture` | Play Mode 게임 프레임을 한 장씩 이미지로 저장하고 모아보기·CSV·영상을 만듦 |
 | `screenshot` | Scene/Game 뷰를 PNG로 캡처 (Game 뷰는 실제 렌더 해상도) |
 | `ui` | UIToolkit UI 조회·조작 및 명시적 화면 전환 감시 |
 | `profiler` | 프로파일러 하이어라키 읽기, 녹화 제어 |
@@ -350,6 +351,29 @@ unity-cli job <job_id> --timeout 360000
 Game 뷰가 렌더링되는 상태에서 실행합니다. Play Mode가 필요할 수 있습니다. `enable`과 `dump`는 native utility로 캡처를 활성화하며 창을 열거나 포커스를 바꾸거나 Game 뷰의 `ShowTab`을 호출하지 않습니다. 사용자가 열어 둔 디버거 창은 유지하되 필요한 managed 데이터 뷰 필드를 초기화합니다. 비활성화할 때 기존 창의 managed 정리 메서드가 있으면 사용하고, 없으면 native utility를 사용합니다. 덤프 중에는 게임을 명시적으로 일시정지하고 전체 프레임의 hash/count가 세 번 같아질 때까지 기다립니다. 성공·실패 이벤트 조회 전후에 hash/count를 검사하며, 실패 이벤트의 이름·오브젝트 조회도 검사 범위에 포함합니다. 프레임 변경을 감지하면 저장 대기 중인 이벤트를 버리고 원래 타임아웃 안에서 최대 세 번 처음부터 재시도하므로 서로 다른 시도의 이벤트를 합치지 않습니다. 응답과 덤프에 `retryCount`, `maxRetries`, `stableSamplesRequired`, `pausedDuringCapture`, `frameChanges`가 추가됩니다. repaint/player-loop 요청으로 백그라운드 갱신을 유도하며, 크거나 느린 순회는 전체 타임아웃을 늘려 실행하되, 준비된 프레임은 별도의 고정 10초 대기 안에 확보해야 합니다. 오류가 발생해도 원래 활성 상태·native limit·일시정지를 복원하며(열려 있던 디버거 창의 목록 선택 강조는 복원하지 않는 알려진 한계가 있습니다) Play Mode 진입·종료나 씬 저장은 하지 않습니다. 캡처 중 씬 수정·리컴파일·디버거 조작을 피합니다. 이벤트별 실패를 기록하고 계속 진행하며 재시도 소진이나 전체 타임아웃은 오류와 부분 덤프를 반환합니다. 프레임을 확보하지 못하면 파일을 만들지 않습니다.
 
 응답과 JSON 요약에는 전체/실패 이벤트 수, 타입·배칭 사유별 개수, 셰이더 및 셰이더/패스별 개수, 보고된 드로우 개수 합계, 보고된 render target 속성의 전환 횟수가 들어갑니다. render target 전환은 native attachment 식별자가 아니라 이름·크기·포맷 등을 비교하므로 동명 타깃의 교체를 놓칠 수 있습니다. 요약은 선택된 이벤트 중 조회에 성공한 데이터를 기준으로 합니다. 전후 비교는 씬·카메라·해상도 조건을 맞추고 `complete`, `truncated`, 실패 개수를 먼저 확인합니다. **이벤트에는 clear·dispatch·scope가 포함되어 GPU 드로우와 1:1이 아니며 GPU 시간도 제공하지 않습니다.** 개수가 줄었다는 사실만으로 GPU 실행 시간이 개선되었다고 판단하지 않습니다.
+
+### 프레임 캡처
+
+```bash
+# 2초 동안 게임 프레임마다 640px JPG를 저장하고 6x6 모아보기를 만듭니다.
+unity-cli capture frames --seconds 2 --out D:/tmp/cap --sheet
+# 조건이 처음 참이 된 프레임부터 찍고, 프레임마다 값을 기록합니다.
+unity-cli capture frames --seconds 3 --out D:/tmp/cap --sheet --start-when "SceneManager.GetActiveScene().name == \"Town\"" --log "Camera.main.transform.position" --log "Time.timeScale"
+# 원본 해상도로 잘라 저장하거나, 긴 구간을 게임 프레임 하나당 영상 프레임 하나로 만듭니다.
+unity-cli capture frames --frames 120 --out D:/tmp/crop --crop 640,200,640,480
+unity-cli capture frames --seconds 30 --out D:/tmp/long --video --no-wait
+unity-cli capture wait        # 또는 capture status / capture stop
+```
+
+`capture frames`는 Game 뷰의 최종 렌더 타깃(`screenshot --view game`과 같은 원본이며 오버레이 UI를 포함합니다)을 플레이어 프레임이 끝날 때마다 `f<Time.frameCount>.jpg`로 저장합니다. 이미지는 GPU에서 절반씩 줄인 뒤 한 번의 bilinear 단계로 맞추고 `AsyncGPUReadback`으로 읽어 오며, 인코딩은 작업 스레드에서 처리하므로 게임 프레임을 붙잡지 않습니다. 게임 시간을 고정하거나 다시 맞추지 않으므로 타이밍 문제가 실제 플레이처럼 재현됩니다. 파일 번호가 건너뛰면 그 프레임을 놓친 것이고, 결과의 `frames_skipped`에 사유별 개수가 나옵니다.
+
+- `--width`(기본 640)는 원본보다 키우지 않습니다. `--crop x,y,w,h`는 렌더 해상도 기준이며 원점은 왼쪽 위입니다. `--width`를 더 작게 주지 않으면 원본 크기로 저장합니다.
+- `--start-when`은 매 프레임 평가하는 C# bool 식입니다(exec와 같은 using 사용). 처음 참이 된 프레임부터 `--seconds`(또는 `--frames`)만큼 찍고, `--wait-timeout`(기본 60초) 안에 참이 되지 않으면 실패로 끝납니다.
+- `--log`는 여러 번 줄 수 있고, 식 값을 frame, realtime, unscaledDeltaTime과 함께 `frames.csv`에 기록합니다.
+- `--sheet [CxR]`은 저장한 모든 프레임을 모아보기 이미지(기본 6x6)에 나눠 담습니다. 칸마다 frameCount를 표기하고 폭은 4000px 안쪽으로 유지하며, 직전 프레임을 놓친 칸은 라벨을 빨간색으로 표시합니다.
+- `--video`는 ffmpeg로 `frames.mp4`를 만들며, 저장한 게임 프레임 하나를 영상 프레임 하나로 넣습니다(실제 시간으로 다시 맞추지 않습니다).
+
+캡처는 Play Mode에서 실행합니다. Enter Play Mode Options로 도메인 리로드를 끈 프로젝트에서는 Play 전에 걸어 둘 수도 있습니다. Play Mode 종료, 도메인 리로드, Editor 종료, `capture stop` 때 깨끗이 정리하고 그때까지 저장한 결과를 남기며, 출력 폴더의 `capture.json`에 결과가 기록됩니다. CLI는 Unity 명령 큐를 붙잡지 않고 상태를 조회하며 기다리므로, 기다리는 동안 다른 명령을 실행할 수 있습니다.
 
 ### UIToolkit UI
 

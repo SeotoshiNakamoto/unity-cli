@@ -31,6 +31,7 @@ Bash/CLI로 Unity Editor를 제어한다. MCP가 아니다. 멀티 Unity 인스�
 - 직접 worktree 검증: 정확한 `--project`로 `editor refresh --compile` → `console --type error` → 필요한 좁은 DryRunner/test를 실행한다.
 - C# 조회/수정: 간단하면 `exec "return ...;"`, 복잡하면 `exec --file d:/tmp/query.cs --usings ...`
 - 시각 확인: 수치/상태는 `exec` 우선, 눈으로 봐야 할 때만 `screenshot --output_path d:/tmp/screenshot.png`
+- 몇 프레임짜리 튐·깜빡임 조사: 녹화 영상을 ffmpeg로 풀지 말고 `capture frames --seconds 2 --out d:/tmp/<작업>/cap --sheet` → 모아보기 `sheet_*.jpg`를 이미지로 읽고, 의심 프레임은 `f<frameCount>.jpg` 원본과 `frames.csv`로 확인한다. 전환 시점에 맞추려면 `--start-when "<C# bool>"`, 값 추적은 `--log "<C# 식>"`을 반복해서 붙인다.
 - UI QA: 플레이 모드에서 `ui tree --runtime --interactive` 먼저 사용한다. 단일 클릭/입력은 `ui click --runtime ...`, `ui type --runtime ...`의 즉시 diff를 본다. 비동기 화면 전환을 연속 감시할 때만 `ui events start` → 작업 중 `ui events` → 반드시 `ui events stop` 순서로 사용한다.
 - 런타임 호출 추적: `trace hook --type T --method M` → `trace read`/`trace list` → 끝나면 `trace clear`
 - 커스텀 도구/파라미터 확인: `list`
@@ -44,6 +45,7 @@ Bash/CLI로 Unity Editor를 제어한다. MCP가 아니다. 멀티 Unity 인스�
 - `trace`: 오버로드는 첫 매칭일 수 있다. `--stack`은 비용이 크므로 필요한 경우만 쓴다. native/extern 메서드는 훅 불가.
 - `profiler`: 성능 분석이 필요할 때만 사용하고, 옵션은 먼저 `profiler --help`로 확인한다.
 - `framedebug`: `dump --output d:/tmp/frame.json`은 창을 열거나 포커스를 바꾸지 않고, 게임을 일시정지한 뒤 안정된 한 프레임을 순회하고 활성·native limit·일시정지 상태를 복원한다(열린 디버거 창의 목록 선택 강조는 복원되지 않는다). 프레임이 바뀌면 최대 3회 처음부터 재시도하므로 `retryCount`도 확인한다. Game 뷰가 렌더링되는 상태에서 실행하고, 캡처 중 씬·디버거·컴파일 상태를 바꾸지 않는다. 전후 비교는 씬·해상도·카메라 조건을 맞추고 `complete`, `truncated`, `failedEvents`를 먼저 확인한다. 이벤트에는 clear·dispatch가 섞여 있어 GPU 드로우와 1:1이 아니며 GPU 시간도 없다. 드로우 요약은 clear·dispatch를 제외하고, 해당 타입에 적용되지 않는 필드는 Unity의 이전 이벤트 값 대신 `null`로 기록한다. 긴 캡처는 `--capture-timeout 300 --async` 후 `job <id> --timeout 360000`을 사용한다. 단, 첫 프레임을 포함해 각 안정화 시도에서 준비된 프레임을 기다리는 시간은 고정 10초이므로 이 옵션으로 늘어나지 않는다. 기존 디버거 창은 유지하되 필요한 managed 필드를 초기화하고 비활성화 시 창의 정리 메서드도 사용한다. 상세 필드는 `framedebug --help`로 확인한다.
+- `capture`: Play 중 Game 뷰 최종 렌더(오버레이 UI 포함)를 게임 프레임마다 한 장씩 `f<Time.frameCount>.jpg`로 저장한다. 게임 시간을 고정하지 않으므로 타이밍 문제가 그대로 재현되고, 번호가 건너뛰면 그 프레임을 놓친 것이다(`frames_skipped`, 모아보기의 빨간 라벨). 기본 640px JPG이고 `--crop x,y,w,h`(렌더 해상도 기준, 왼쪽 위 원점)는 원본 크기로 저장한다. `--out`은 작업마다 새 폴더를 쓰고, 재사용하려면 `--overwrite`를 붙인다. 모아보기는 저장된 모든 프레임을 6x6씩 나눠 여러 장으로 만든다(긴 구간은 장 수가 늘어나므로 `--seconds`를 짧게 하거나 `--video`를 쓴다). 결과를 기다리는 동안 Unity 명령 큐를 막지 않으므로, `--no-wait`로 시작한 뒤 다른 셸에서 `exec`/`ui click`으로 전환을 일으키고 `capture wait`로 결과를 받는다. Play 진입 때 도메인 리로드가 꺼진 프로젝트는 Play 전에 걸어 두면 첫 프레임부터 찍힌다. Play 종료·도메인 리로드·`capture stop`이면 그때까지 저장한 결과를 남긴다.
 - `reserialize`: YAML 에셋을 텍스트 수정한 뒤 Unity serializer로 다시 저장할 때 사용한다.
 - `test`: Unity Test Framework 실행. PlayMode 테스트는 도메인 리로드 뒤 connector port를 다시 찾고 Editor `ready`와 bootstrap scene 삭제까지 기다린 뒤 반환한다.
 - `instances`: Unity 연결 없이 heartbeat를 조회한다. heartbeat에는 Connector 버전/listener 상태가 포함되고, CLI readiness는 1.5초 이내에 갱신된 `ready`/`playing`/`paused` heartbeat와 listener 연결을 함께 확인한다. 미래·오래된 heartbeat나 compiling/reloading/refresh/전환 상태에서는 HTTP가 응답해도 명령을 보내지 않는다. 연결 확인은 메인 스레드와 독립적인 `/health`를 쓴다. 미실행 503이나 일반 명령의 불확실한 결과를 자동 재전송하지 않는다. `kill`은 정확한 `--project` 또는 `--port`와 `--force`가 모두 있어야 한다.
